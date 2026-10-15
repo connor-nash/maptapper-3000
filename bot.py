@@ -22,10 +22,25 @@ COGS = [
 class MapTapper(commands.Bot):
     async def setup_hook(self):
         await db.init_db()
+        await self._seed_legacy_scores()
         for cog in COGS:
             await self.load_extension(cog)
         await self.tree.sync()
         print(f"Synced slash commands.")
+
+    async def _seed_legacy_scores(self):
+        """Seeds legacy scores on first boot if the players table is empty."""
+        players = await db.get_all_players()
+        if players:
+            return
+        legacy = [
+            ("seed:pitystomper69", "pitystomper69", 990),
+            ("seed:chicken__man.",  "chicken__man.",  984),
+            ("seed:Zach Coury",     "Zach Coury",     969),
+        ]
+        for discord_id, username, final_score in legacy:
+            await db.seed_score(discord_id, username, final_score)
+        print("Seeded 3 legacy scores.")
 
     async def on_ready(self):
         print(f"MapTapper 3000 online as {self.user} ({self.user.id})")
