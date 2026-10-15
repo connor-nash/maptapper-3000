@@ -1,0 +1,17 @@
+app = 'maptapper-3000'
+primary_region = 'dfw'
+
+[build]
+
+[env]
+  DB_PATH = '/app/data/maptap.db'
+  PYTHONUNBUFFERED = '1'
+
+[[mounts]]
+  source = 'data'
+  destination = '/app/data'
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
