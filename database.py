@@ -37,6 +37,7 @@ async def init_db():
                 game_date TEXT NOT NULL,
                 round_scores TEXT NOT NULL,
                 final_score INTEGER NOT NULL,
+                is_legacy INTEGER NOT NULL DEFAULT 0,
                 posted_at TEXT DEFAULT (datetime('now')),
                 UNIQUE(player_id, game_date)
             );
@@ -97,13 +98,13 @@ async def get_all_players() -> list:
 
 # --- Scores ---
 
-async def insert_score(player_id: int, game_date: str, round_scores: list[int], final_score: int) -> bool:
+async def insert_score(player_id: int, game_date: str, round_scores: list[int], final_score: int, is_legacy: bool = False) -> bool:
     """Returns True if inserted, False if already exists (first post wins)."""
     async with aiosqlite.connect(DB_PATH) as db:
         try:
             await db.execute(
-                "INSERT INTO scores (player_id, game_date, round_scores, final_score) VALUES (?, ?, ?, ?)",
-                (player_id, game_date, json.dumps(round_scores), final_score)
+                "INSERT INTO scores (player_id, game_date, round_scores, final_score, is_legacy) VALUES (?, ?, ?, ?, ?)",
+                (player_id, game_date, json.dumps(round_scores), final_score, 1 if is_legacy else 0)
             )
             await db.commit()
             return True
@@ -143,14 +144,14 @@ def _iso_week_date_range(iso_year: int, iso_week: int) -> tuple[str, str]:
 
 
 async def get_scores_for_week(iso_year: int, iso_week: int) -> list:
-    """Returns all scores for a given ISO week (Mon-Sun)."""
+    """Returns all non-legacy scores for a given ISO week (Mon-Sun)."""
     start, end = _iso_week_date_range(iso_year, iso_week)
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             """SELECT s.*, p.discord_id, p.username
                FROM scores s JOIN players p ON s.player_id = p.id
-               WHERE s.game_date BETWEEN ? AND ?
+               WHERE s.game_date BETWEEN ? AND ? AND s.is_legacy = 0
                ORDER BY s.game_date, s.final_score DESC""",
             (start, end)
         )
@@ -164,7 +165,7 @@ async def get_scores_for_month(year: int, month: int) -> list:
         cursor = await db.execute(
             """SELECT s.*, p.discord_id, p.username
                FROM scores s JOIN players p ON s.player_id = p.id
-               WHERE s.game_date LIKE ?
+               WHERE s.game_date LIKE ? AND s.is_legacy = 0
                ORDER BY s.game_date, s.final_score DESC""",
             (f"{prefix}%",)
         )
@@ -438,7 +439,51 @@ async def get_player_current_month_avg(player_id: int, year: int, month: int) ->
         return row[0] if row and row[0] is not None else None
 
 
-async def seed_score(discord_id: str, username: str, game_date: str, round_scores: list[int], final_score: int):
-    """Used for seeding initial historical data."""
+async def seed_score(discord_id: str, username: str, final_score: int):
+    """Seed a legacy score (all-time only, excluded from weekly/monthly)."""
     player_id = await upsert_player(discord_id, username)
-    await insert_score(player_id, game_date, round_scores, final_score)
+    # Use a unique sentinel date per player so the UNIQUE(player_id, game_date) constraint doesn't fire
+    game_date = f"2000-01-{(player_id % 28) + 1:02d}"
+    await insert_score(player_id, game_date, [0, 0, 0, 0, 0], final_score, is_legacy=True)
+
+
+async def link_player(username: str, real_discord_id: str):
+    """
+    Link a seeded player (identified by username) to their real Discord ID.
+    Reassigns all their scores and achievements to the real ID.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        # Find the seeded player by username with a seed: prefix
+        row = await db.execute_fetchone(
+            "SELECT id FROM players WHERE username = ? AND discord_id LIKE 'seed:%'",
+            (username,)
+        )
+        if row is None:
+            return False
+        seeded_player_id = row["id"]
+
+        # Check if a real player with this discord_id already exists
+        existing = await db.execute_fetchone(
+            "SELECT id FROM players WHERE discord_id = ?", (real_discord_id,)
+        )
+        if existing:
+            # Migrate seeded scores to the real player, then delete the seed entry
+            await db.execute(
+                "UPDATE scores SET player_id = ? WHERE player_id = ?",
+                (existing["id"], seeded_player_id)
+            )
+            await db.execute(
+                "UPDATE achievements SET player_id = ? WHERE player_id = ?",
+                (existing["id"], seeded_player_id)
+            )
+            await db.execute("DELETE FROM players WHERE id = ?", (seeded_player_id,))
+        else:
+            # Just update the discord_id on the existing seed record
+            await db.execute(
+                "UPDATE players SET discord_id = ? WHERE id = ?",
+                (real_discord_id, seeded_player_id)
+            )
+
+        await db.commit()
+        return True

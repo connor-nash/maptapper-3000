@@ -60,9 +60,26 @@ class Admin(commands.Cog):
             ephemeral=True,
         )
 
+    @admin_group.command(name="link-player", description="Link a seeded player name to their Discord account")
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(username="The name used when seeding (e.g. 'Zach Coury')", user="Their Discord account")
+    async def link_player(self, interaction: discord.Interaction, username: str, user: discord.Member):
+        success = await db.link_player(username, str(user.id))
+        if success:
+            await interaction.response.send_message(
+                f"✅ Linked **{username}** to {user.mention}. Their legacy scores are now attached to their account.",
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                f"❌ Couldn't find a seeded player named **{username}**. Check the spelling matches exactly.",
+                ephemeral=True,
+            )
+
     @set_channel.error
     @reset.error
     @status.error
+    @link_player.error
     async def admin_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.MissingPermissions):
             await interaction.response.send_message("You need Administrator permission for that.", ephemeral=True)
