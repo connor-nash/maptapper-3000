@@ -29,9 +29,8 @@ class MapTapper(commands.Bot):
         print(f"Synced slash commands.")
 
     async def _seed_legacy_scores(self):
-        """Seeds legacy scores on first boot if the players table is empty."""
-        players = await db.get_all_players()
-        if players:
+        """Seeds legacy scores on first boot if legacy scores don't exist yet."""
+        if await db.has_legacy_scores():
             return
         legacy = [
             ("seed:pitystomper69", "pitystomper69", 990),

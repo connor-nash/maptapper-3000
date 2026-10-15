@@ -392,6 +392,12 @@ async def get_player_current_month_avg(player_id: int, year: int, month: int) ->
         return row[0] if row and row[0] is not None else None
 
 
+async def has_legacy_scores() -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        row = await _fetchone(db, "SELECT 1 FROM scores WHERE is_legacy = 1 LIMIT 1")
+        return row is not None
+
+
 # --- Seeding / Linking ---
 
 async def seed_score(discord_id: str, username: str, final_score: int):
