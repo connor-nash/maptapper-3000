@@ -46,24 +46,39 @@ def weekly_leaderboard_embed(iso_year: int, iso_week: int, weekly_data: list) ->
         url=MAPTAP_URL,
     )
     embed.description = (
-        "Weekly score = all days played (0 for missed), drop 2 worst, sum the rest.\n"
+        "Drop 2 lowest scores (including missed days), sum the remaining 5.\n"
         f"Play at [maptap.gg]({MAPTAP_URL})"
     )
 
-    if not weekly_data or all(d["weekly_score"] == 0 for d in weekly_data):
+    active = [d for d in weekly_data if d["weekly_score"] > 0]
+    if not active:
         embed.add_field(name="No scores this week", value="​", inline=False)
         return embed
 
-    lines = []
-    for i, d in enumerate(weekly_data, 1):
-        if d["weekly_score"] == 0:
-            continue
-        lines.append(
-            f"{_medal(i)} **{d['username']}** — {d['weekly_score']:,} "
-            f"*({d['games_played']}/7 days played)*"
-        )
+    # Total (drop-2 sum)
+    by_total = sorted(active, key=lambda x: x["weekly_score"], reverse=True)
+    total_lines = [
+        f"{_medal(i)} **{d['username']}** — {d['weekly_score']:,} *({d['games_played']}/7 days)*"
+        for i, d in enumerate(by_total, 1)
+    ]
+    embed.add_field(name="🏅 Total (Drop-2)", value="\n".join(total_lines), inline=False)
 
-    embed.add_field(name="Leaderboard", value="\n".join(lines) or "—", inline=False)
+    # Best single score
+    by_best = sorted(active, key=lambda x: x["best_score"], reverse=True)
+    best_lines = [
+        f"{_medal(i)} **{d['username']}** — {d['best_score']}"
+        for i, d in enumerate(by_best, 1)
+    ]
+    embed.add_field(name="⚡ Best Single Score", value="\n".join(best_lines), inline=False)
+
+    # Average (of the 5 kept scores)
+    by_avg = sorted(active, key=lambda x: x["weekly_avg"], reverse=True)
+    avg_lines = [
+        f"{_medal(i)} **{d['username']}** — {d['weekly_avg']:.1f} avg"
+        for i, d in enumerate(by_avg, 1)
+    ]
+    embed.add_field(name="📊 Average (Drop-2)", value="\n".join(avg_lines), inline=False)
+
     return embed
 
 
@@ -80,14 +95,30 @@ def monthly_leaderboard_embed(year: int, month: int, monthly_data: list) -> disc
         embed.add_field(name="No scores this month", value="​", inline=False)
         return embed
 
-    lines = []
-    for i, d in enumerate(monthly_data, 1):
-        lines.append(
-            f"{_medal(i)} **{d['username']}** — {d['monthly_total']:,} "
-            f"*({d['games_played']} games)*"
-        )
+    # Total
+    by_total = sorted(monthly_data, key=lambda x: x["monthly_total"], reverse=True)
+    total_lines = [
+        f"{_medal(i)} **{d['username']}** — {d['monthly_total']:,} *({d['games_played']} days)*"
+        for i, d in enumerate(by_total, 1)
+    ]
+    embed.add_field(name="🏅 Total Points", value="\n".join(total_lines), inline=False)
 
-    embed.add_field(name="Leaderboard", value="\n".join(lines), inline=False)
+    # Best single score
+    by_best = sorted(monthly_data, key=lambda x: x["best_score"], reverse=True)
+    best_lines = [
+        f"{_medal(i)} **{d['username']}** — {d['best_score']}"
+        for i, d in enumerate(by_best, 1)
+    ]
+    embed.add_field(name="⚡ Best Single Score", value="\n".join(best_lines), inline=False)
+
+    # Average
+    by_avg = sorted(monthly_data, key=lambda x: x["monthly_avg"], reverse=True)
+    avg_lines = [
+        f"{_medal(i)} **{d['username']}** — {d['monthly_avg']:.1f} avg"
+        for i, d in enumerate(by_avg, 1)
+    ]
+    embed.add_field(name="📊 Average", value="\n".join(avg_lines), inline=False)
+
     return embed
 
 

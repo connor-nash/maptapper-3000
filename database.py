@@ -327,11 +327,16 @@ async def compute_weekly_scores(iso_year: int, iso_week: int) -> list[dict]:
     for pid, data in player_scores.items():
         daily = data["daily_scores"]
         padded = sorted(daily + [0] * (7 - len(daily)))
-        kept = padded[2:]
+        kept = padded[2:]  # 5 scores after dropping 2 lowest
+        weekly_total = sum(kept)
+        weekly_avg = weekly_total / 5 if kept else 0
+        best = max(daily) if daily else 0
         results.append({
             "discord_id": data["discord_id"],
             "username": data["username"],
-            "weekly_score": sum(kept),
+            "weekly_score": weekly_total,
+            "weekly_avg": weekly_avg,
+            "best_score": best,
             "games_played": len(daily),
         })
 
@@ -339,7 +344,10 @@ async def compute_weekly_scores(iso_year: int, iso_week: int) -> list[dict]:
     existing_ids = {r["discord_id"] for r in results}
     for p in all_players:
         if p["discord_id"] not in existing_ids and not p["discord_id"].startswith("seed:"):
-            results.append({"discord_id": p["discord_id"], "username": p["username"], "weekly_score": 0, "games_played": 0})
+            results.append({
+                "discord_id": p["discord_id"], "username": p["username"],
+                "weekly_score": 0, "weekly_avg": 0.0, "best_score": 0, "games_played": 0,
+            })
 
     results.sort(key=lambda x: x["weekly_score"], reverse=True)
     return results
@@ -352,9 +360,18 @@ async def compute_monthly_scores(year: int, month: int) -> list[dict]:
     for row in all_scores:
         pid = row["discord_id"]
         if pid not in player_data:
-            player_data[pid] = {"discord_id": row["discord_id"], "username": row["username"], "monthly_total": 0, "games_played": 0}
+            player_data[pid] = {
+                "discord_id": row["discord_id"], "username": row["username"],
+                "monthly_total": 0, "games_played": 0, "best_score": 0, "all_scores": [],
+            }
         player_data[pid]["monthly_total"] += row["final_score"]
         player_data[pid]["games_played"] += 1
+        player_data[pid]["all_scores"].append(row["final_score"])
+        if row["final_score"] > player_data[pid]["best_score"]:
+            player_data[pid]["best_score"] = row["final_score"]
+
+    for d in player_data.values():
+        d["monthly_avg"] = d["monthly_total"] / d["games_played"] if d["games_played"] else 0
 
     results = list(player_data.values())
     results.sort(key=lambda x: x["monthly_total"], reverse=True)
