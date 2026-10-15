@@ -58,6 +58,12 @@ async def init_db():
             );
         """)
         await db.commit()
+        # Migration: add is_legacy column if it doesn't exist yet
+        try:
+            await db.execute("ALTER TABLE scores ADD COLUMN is_legacy INTEGER NOT NULL DEFAULT 0")
+            await db.commit()
+        except Exception:
+            pass  # Column already exists
 
 
 # --- Player ---
