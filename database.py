@@ -1,25 +1,19 @@
 import aiosqlite
 import json
+import os
 from datetime import date, datetime
 from typing import Optional
-import pytz
-from config import TIMEZONE
 
-import os
 DB_PATH = os.environ.get("DB_PATH", "maptap.db")
 
 
-async def get_db() -> aiosqlite.Connection:
-    db = await aiosqlite.connect(DB_PATH)
-    db.row_factory = aiosqlite.Row
-    await db.execute("PRAGMA journal_mode=WAL")
-    await db.execute("PRAGMA foreign_keys=ON")
-    return db
+async def _fetchone(db: aiosqlite.Connection, sql: str, params: tuple = ()) -> Optional[aiosqlite.Row]:
+    cursor = await db.execute(sql, params)
+    return await cursor.fetchone()
 
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
         await db.executescript("""
             PRAGMA journal_mode=WAL;
             PRAGMA foreign_keys=ON;
@@ -77,16 +71,14 @@ async def upsert_player(discord_id: str, username: str) -> int:
             (discord_id, username)
         )
         await db.commit()
-        row = await db.execute_fetchone("SELECT id FROM players WHERE discord_id = ?", (discord_id,))
+        row = await _fetchone(db, "SELECT id FROM players WHERE discord_id = ?", (discord_id,))
         return row["id"]
 
 
 async def get_player_by_discord_id(discord_id: str) -> Optional[aiosqlite.Row]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        return await db.execute_fetchone(
-            "SELECT * FROM players WHERE discord_id = ?", (discord_id,)
-        )
+        return await _fetchone(db, "SELECT * FROM players WHERE discord_id = ?", (discord_id,))
 
 
 async def get_all_players() -> list:
@@ -115,10 +107,7 @@ async def insert_score(player_id: int, game_date: str, round_scores: list[int], 
 async def get_score(player_id: int, game_date: str) -> Optional[aiosqlite.Row]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        return await db.execute_fetchone(
-            "SELECT * FROM scores WHERE player_id = ? AND game_date = ?",
-            (player_id, game_date)
-        )
+        return await _fetchone(db, "SELECT * FROM scores WHERE player_id = ? AND game_date = ?", (player_id, game_date))
 
 
 async def get_scores_for_date(game_date: str) -> list:
@@ -127,7 +116,7 @@ async def get_scores_for_date(game_date: str) -> list:
         cursor = await db.execute(
             """SELECT s.*, p.discord_id, p.username
                FROM scores s JOIN players p ON s.player_id = p.id
-               WHERE s.game_date = ?
+               WHERE s.game_date = ? AND s.is_legacy = 0
                ORDER BY s.final_score DESC""",
             (game_date,)
         )
@@ -135,7 +124,6 @@ async def get_scores_for_date(game_date: str) -> list:
 
 
 def _iso_week_date_range(iso_year: int, iso_week: int) -> tuple[str, str]:
-    """Returns (monday_str, sunday_str) for a given ISO year+week."""
     import datetime as _dt
     jan4 = _dt.date(iso_year, 1, 4)
     week_start = jan4 + _dt.timedelta(weeks=iso_week - 1) - _dt.timedelta(days=jan4.isoweekday() - 1)
@@ -144,7 +132,6 @@ def _iso_week_date_range(iso_year: int, iso_week: int) -> tuple[str, str]:
 
 
 async def get_scores_for_week(iso_year: int, iso_week: int) -> list:
-    """Returns all non-legacy scores for a given ISO week (Mon-Sun)."""
     start, end = _iso_week_date_range(iso_year, iso_week)
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -186,7 +173,7 @@ async def get_player_all_scores(player_id: int) -> list:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM scores WHERE player_id = ? ORDER BY game_date",
+            "SELECT * FROM scores WHERE player_id = ? AND is_legacy = 0 ORDER BY game_date",
             (player_id,)
         )
         return await cursor.fetchall()
@@ -194,19 +181,16 @@ async def get_player_all_scores(player_id: int) -> list:
 
 async def get_player_cumulative_score(player_id: int) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
-        row = await db.execute_fetchone(
-            "SELECT COALESCE(SUM(final_score), 0) as total FROM scores WHERE player_id = ?",
-            (player_id,)
-        )
+        db.row_factory = aiosqlite.Row
+        row = await _fetchone(db, "SELECT COALESCE(SUM(final_score), 0) as total FROM scores WHERE player_id = ?", (player_id,))
         return row[0] if row else 0
 
 
 async def get_player_perfect_rounds_count(player_id: int) -> int:
-    """Count how many individual rounds scored exactly 100."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT round_scores FROM scores WHERE player_id = ?",
+            "SELECT round_scores FROM scores WHERE player_id = ? AND is_legacy = 0",
             (player_id,)
         )
         rows = await cursor.fetchall()
@@ -218,9 +202,9 @@ async def get_player_perfect_rounds_count(player_id: int) -> int:
 
 
 async def get_player_fumble_count(player_id: int) -> int:
-    """Count achievements of type 'fumble' for a player."""
     async with aiosqlite.connect(DB_PATH) as db:
-        row = await db.execute_fetchone(
+        db.row_factory = aiosqlite.Row
+        row = await _fetchone(db,
             "SELECT COUNT(*) FROM achievements WHERE player_id = ? AND achievement_type = 'fumble'",
             (player_id,)
         )
@@ -246,10 +230,9 @@ async def get_all_time_leaderboard() -> list:
 
 async def get_player_rolling_avg(player_id: int, days: int = 30) -> Optional[float]:
     async with aiosqlite.connect(DB_PATH) as db:
-        row = await db.execute_fetchone(
-            """SELECT AVG(final_score) FROM scores
-               WHERE player_id = ?
-               AND game_date >= date('now', ?)""",
+        db.row_factory = aiosqlite.Row
+        row = await _fetchone(db,
+            "SELECT AVG(final_score) FROM scores WHERE player_id = ? AND is_legacy = 0 AND game_date >= date('now', ?)",
             (player_id, f"-{days} days")
         )
         return row[0] if row and row[0] is not None else None
@@ -259,7 +242,7 @@ async def get_player_rolling_avg(player_id: int, days: int = 30) -> Optional[flo
 
 async def get_config(key: str) -> Optional[str]:
     async with aiosqlite.connect(DB_PATH) as db:
-        row = await db.execute_fetchone("SELECT value FROM bot_config WHERE key = ?", (key,))
+        row = await _fetchone(db, "SELECT value FROM bot_config WHERE key = ?", (key,))
         return row[0] if row else None
 
 
@@ -285,7 +268,7 @@ async def mark_summary_posted(summary_type: str, period: str):
 
 async def is_summary_posted(summary_type: str, period: str) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
-        row = await db.execute_fetchone(
+        row = await _fetchone(db,
             "SELECT 1 FROM summaries_posted WHERE summary_type = ? AND period = ?",
             (summary_type, period)
         )
@@ -305,7 +288,7 @@ async def record_achievement(player_id: int, achievement_type: str, period: str,
 
 async def has_achievement(player_id: int, achievement_type: str, period: str) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
-        row = await db.execute_fetchone(
+        row = await _fetchone(db,
             "SELECT 1 FROM achievements WHERE player_id = ? AND achievement_type = ? AND period = ?",
             (player_id, achievement_type, period)
         )
@@ -322,75 +305,48 @@ async def get_player_achievements(player_id: int) -> list:
         return await cursor.fetchall()
 
 
-# --- Weekly leaderboard helpers ---
+# --- Weekly / Monthly helpers ---
 
 async def compute_weekly_scores(iso_year: int, iso_week: int) -> list[dict]:
-    """
-    Returns weekly scores per player using the drop-2 mechanic.
-    Each week has 7 slots (Mon-Sun). Unplayed days = 0.
-    Drop the 2 lowest scores, sum the remaining 5.
-    """
     all_scores = await get_scores_for_week(iso_year, iso_week)
 
-    # Group by player
     player_scores: dict[str, dict] = {}
     for row in all_scores:
         pid = row["discord_id"]
         if pid not in player_scores:
-            player_scores[pid] = {
-                "discord_id": row["discord_id"],
-                "username": row["username"],
-                "daily_scores": [],
-            }
+            player_scores[pid] = {"discord_id": row["discord_id"], "username": row["username"], "daily_scores": []}
         player_scores[pid]["daily_scores"].append(row["final_score"])
 
     results = []
     for pid, data in player_scores.items():
         daily = data["daily_scores"]
-        # Pad to 7 with zeros for missed days
-        padded = daily + [0] * (7 - len(daily))
-        padded.sort()
-        # Drop 2 lowest
+        padded = sorted(daily + [0] * (7 - len(daily)))
         kept = padded[2:]
         results.append({
             "discord_id": data["discord_id"],
             "username": data["username"],
             "weekly_score": sum(kept),
             "games_played": len(daily),
-            "raw_scores": daily,
         })
 
-    # Include players who played nothing this week
     all_players = await get_all_players()
     existing_ids = {r["discord_id"] for r in results}
     for p in all_players:
-        if p["discord_id"] not in existing_ids:
-            results.append({
-                "discord_id": p["discord_id"],
-                "username": p["username"],
-                "weekly_score": 0,
-                "games_played": 0,
-                "raw_scores": [],
-            })
+        if p["discord_id"] not in existing_ids and not p["discord_id"].startswith("seed:"):
+            results.append({"discord_id": p["discord_id"], "username": p["username"], "weekly_score": 0, "games_played": 0})
 
     results.sort(key=lambda x: x["weekly_score"], reverse=True)
     return results
 
 
 async def compute_monthly_scores(year: int, month: int) -> list[dict]:
-    """Returns total monthly scores per player."""
     all_scores = await get_scores_for_month(year, month)
 
     player_data: dict[str, dict] = {}
     for row in all_scores:
         pid = row["discord_id"]
         if pid not in player_data:
-            player_data[pid] = {
-                "discord_id": row["discord_id"],
-                "username": row["username"],
-                "monthly_total": 0,
-                "games_played": 0,
-            }
+            player_data[pid] = {"discord_id": row["discord_id"], "username": row["username"], "monthly_total": 0, "games_played": 0}
         player_data[pid]["monthly_total"] += row["final_score"]
         player_data[pid]["games_played"] += 1
 
@@ -399,31 +355,27 @@ async def compute_monthly_scores(year: int, month: int) -> list[dict]:
     return results
 
 
-async def get_days_in_month(year: int, month: int) -> int:
-    import calendar
-    return calendar.monthrange(year, month)[1]
-
-
 async def get_player_month_game_count(player_id: int, year: int, month: int) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
         prefix = f"{year:04d}-{month:02d}"
-        row = await db.execute_fetchone(
-            "SELECT COUNT(*) FROM scores WHERE player_id = ? AND game_date LIKE ?",
+        row = await _fetchone(db,
+            "SELECT COUNT(*) FROM scores WHERE player_id = ? AND game_date LIKE ? AND is_legacy = 0",
             (player_id, f"{prefix}%")
         )
         return row[0] if row else 0
 
 
 async def get_player_prev_month_avg(player_id: int, year: int, month: int) -> Optional[float]:
-    """Get a player's average score for the month before (year, month)."""
     if month == 1:
         prev_year, prev_month = year - 1, 12
     else:
         prev_year, prev_month = year, month - 1
     prefix = f"{prev_year:04d}-{prev_month:02d}"
     async with aiosqlite.connect(DB_PATH) as db:
-        row = await db.execute_fetchone(
-            "SELECT AVG(final_score) FROM scores WHERE player_id = ? AND game_date LIKE ?",
+        db.row_factory = aiosqlite.Row
+        row = await _fetchone(db,
+            "SELECT AVG(final_score) FROM scores WHERE player_id = ? AND game_date LIKE ? AND is_legacy = 0",
             (player_id, f"{prefix}%")
         )
         return row[0] if row and row[0] is not None else None
@@ -432,58 +384,42 @@ async def get_player_prev_month_avg(player_id: int, year: int, month: int) -> Op
 async def get_player_current_month_avg(player_id: int, year: int, month: int) -> Optional[float]:
     prefix = f"{year:04d}-{month:02d}"
     async with aiosqlite.connect(DB_PATH) as db:
-        row = await db.execute_fetchone(
-            "SELECT AVG(final_score) FROM scores WHERE player_id = ? AND game_date LIKE ?",
+        db.row_factory = aiosqlite.Row
+        row = await _fetchone(db,
+            "SELECT AVG(final_score) FROM scores WHERE player_id = ? AND game_date LIKE ? AND is_legacy = 0",
             (player_id, f"{prefix}%")
         )
         return row[0] if row and row[0] is not None else None
 
 
+# --- Seeding / Linking ---
+
 async def seed_score(discord_id: str, username: str, final_score: int):
-    """Seed a legacy score (all-time only, excluded from weekly/monthly)."""
+    """Seed a legacy score (all-time leaderboard only, excluded from weekly/monthly)."""
     player_id = await upsert_player(discord_id, username)
-    # Use a unique sentinel date per player so the UNIQUE(player_id, game_date) constraint doesn't fire
     game_date = f"2000-01-{(player_id % 28) + 1:02d}"
     await insert_score(player_id, game_date, [0, 0, 0, 0, 0], final_score, is_legacy=True)
 
 
-async def link_player(username: str, real_discord_id: str):
-    """
-    Link a seeded player (identified by username) to their real Discord ID.
-    Reassigns all their scores and achievements to the real ID.
-    """
+async def link_player(username: str, real_discord_id: str) -> bool:
+    """Link a seeded player to their real Discord ID, merging their history."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        # Find the seeded player by username with a seed: prefix
-        row = await db.execute_fetchone(
+        seed_row = await _fetchone(db,
             "SELECT id FROM players WHERE username = ? AND discord_id LIKE 'seed:%'",
             (username,)
         )
-        if row is None:
+        if seed_row is None:
             return False
-        seeded_player_id = row["id"]
+        seeded_id = seed_row["id"]
 
-        # Check if a real player with this discord_id already exists
-        existing = await db.execute_fetchone(
-            "SELECT id FROM players WHERE discord_id = ?", (real_discord_id,)
-        )
+        existing = await _fetchone(db, "SELECT id FROM players WHERE discord_id = ?", (real_discord_id,))
         if existing:
-            # Migrate seeded scores to the real player, then delete the seed entry
-            await db.execute(
-                "UPDATE scores SET player_id = ? WHERE player_id = ?",
-                (existing["id"], seeded_player_id)
-            )
-            await db.execute(
-                "UPDATE achievements SET player_id = ? WHERE player_id = ?",
-                (existing["id"], seeded_player_id)
-            )
-            await db.execute("DELETE FROM players WHERE id = ?", (seeded_player_id,))
+            await db.execute("UPDATE scores SET player_id = ? WHERE player_id = ?", (existing["id"], seeded_id))
+            await db.execute("UPDATE achievements SET player_id = ? WHERE player_id = ?", (existing["id"], seeded_id))
+            await db.execute("DELETE FROM players WHERE id = ?", (seeded_id,))
         else:
-            # Just update the discord_id on the existing seed record
-            await db.execute(
-                "UPDATE players SET discord_id = ? WHERE id = ?",
-                (real_discord_id, seeded_player_id)
-            )
+            await db.execute("UPDATE players SET discord_id = ? WHERE id = ?", (real_discord_id, seeded_id))
 
         await db.commit()
         return True
