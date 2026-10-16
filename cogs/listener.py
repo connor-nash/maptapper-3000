@@ -43,6 +43,10 @@ class Listener(commands.Cog):
             str(message.author.id), message.author.display_name
         )
 
+        # Capture all-time top 3 before insert for shakeup detection
+        pre_rows = await db.get_all_time_leaderboard()
+        old_top3 = [(r["username"], r["best_score"]) for r in pre_rows[:3]]
+
         # Insert score (first post wins)
         inserted = await db.insert_score(
             player_id, parsed.game_date, parsed.round_scores, parsed.final_score
@@ -54,6 +58,20 @@ class Listener(commands.Cog):
             return
 
         await message.add_reaction("✅")
+
+        # Check all-time top 3 shakeup
+        post_rows = await db.get_all_time_leaderboard()
+        new_top3 = [(r["username"], r["best_score"]) for r in post_rows[:3]]
+        old_scores = [s for _, s in old_top3]
+        new_scores = [s for _, s in new_top3]
+        if old_scores != new_scores:
+            mover = message.author.display_name
+            embed = embeds.shakeup_embed(mover, old_top3, new_top3, post_rows)
+            await message.channel.send(embed=embed)
+            import json
+            await db.set_config("last_top3", json.dumps(
+                [{"username": n, "best_score": s} for n, s in new_top3]
+            ))
 
         # Check immediate achievements
         immediate = await ach.check_immediate_achievements(

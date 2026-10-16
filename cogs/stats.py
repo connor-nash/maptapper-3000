@@ -43,6 +43,7 @@ async def _build_player_stats(player_id: int) -> dict:
     perfect_scores = sum(1 for a in ach_rows if a["achievement_type"] == "perfect_score")
     fumbles = await db.get_player_fumble_count(player_id)
     perfect_rounds = await db.get_player_perfect_rounds_count(player_id)
+    nice_count = await db.get_player_69_count(player_id)
 
     return {
         "games_played": games_played,
@@ -55,6 +56,7 @@ async def _build_player_stats(player_id: int) -> dict:
         "perfect_scores": perfect_scores,
         "perfect_rounds": perfect_rounds,
         "fumbles": fumbles,
+        "nice_count": nice_count,
     }
 
 

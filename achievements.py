@@ -84,6 +84,14 @@ async def check_immediate_achievements(
                 await db.record_achievement(player_id, f"score_milestone_{milestone}", game_date, {"milestone": milestone})
                 results.append({"type": "score_milestone", "metadata": {"milestone": milestone, "total": cumulative}})
 
+    # Very Nice: any round score of 69
+    sixty_nine_rounds = [i + 1 for i, r in enumerate(round_scores) if r == 69]
+    if sixty_nine_rounds:
+        already = await db.has_achievement(player_id, "sixty_nine", game_date)
+        if not already:
+            await db.record_achievement(player_id, "sixty_nine", game_date, {"rounds": sixty_nine_rounds})
+            results.append({"type": "sixty_nine", "metadata": {"rounds": sixty_nine_rounds}})
+
     # Perfect round milestones
     total_perfect = await db.get_player_perfect_rounds_count(player_id)
     prev_perfect = total_perfect - sum(1 for r in round_scores if r == 100)

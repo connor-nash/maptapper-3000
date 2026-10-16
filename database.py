@@ -207,6 +207,15 @@ async def get_player_perfect_rounds_count(player_id: int) -> int:
         return count
 
 
+async def get_player_69_count(player_id: int) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        row = await _fetchone(db,
+            "SELECT COUNT(*) FROM achievements WHERE player_id = ? AND achievement_type = 'sixty_nine'",
+            (player_id,)
+        )
+        return row[0] if row else 0
+
+
 async def get_player_fumble_count(player_id: int) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -229,7 +238,7 @@ async def get_all_time_leaderboard() -> list:
                FROM players p
                LEFT JOIN scores s ON s.player_id = p.id
                GROUP BY p.id
-               ORDER BY total DESC"""
+               ORDER BY best_score DESC"""
         )
         return await cursor.fetchall()
 

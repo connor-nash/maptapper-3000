@@ -33,7 +33,7 @@ def daily_leaderboard_embed(game_date: str, scores: list) -> discord.Embed:
     for i, row in enumerate(scores, 1):
         rounds = json.loads(row["round_scores"])
         rounds_str = " | ".join(str(r) for r in rounds)
-        lines.append(f"{_medal(i)} **{row['username']}** — {row['final_score']} *(rounds: {rounds_str})*")
+        lines.append(f"{_medal(i)} **{row['username']}** — {row['final_score']}  ·  {rounds_str}")
 
     embed.add_field(name="Leaderboard", value="\n".join(lines), inline=False)
     return embed
@@ -125,6 +125,7 @@ def monthly_leaderboard_embed(year: int, month: int, monthly_data: list) -> disc
 def all_time_leaderboard_embed(rows: list) -> discord.Embed:
     embed = discord.Embed(
         title="🌍 All-Time Leaderboard",
+        description="Ranked by best single score.",
         color=EMBED_COLOR,
         url=MAPTAP_URL,
     )
@@ -136,11 +137,58 @@ def all_time_leaderboard_embed(rows: list) -> discord.Embed:
     lines = []
     for i, row in enumerate(rows, 1):
         lines.append(
-            f"{_medal(i)} **{row['username']}** — {row['total']:,} total "
-            f"| avg {row['avg_score']:.0f} | best {row['best_score']} | {row['games_played']} games"
+            f"{_medal(i)} **{row['username']}** — {row['best_score']} best"
+            f"  |  {row['avg_score']:.0f} avg  |  {row['games_played']} games"
         )
 
     embed.add_field(name="Rankings", value="\n".join(lines), inline=False)
+    return embed
+
+
+def shakeup_embed(mover_name: str, old_top3: list, new_top3: list, all_rows: list) -> discord.Embed:
+    old_names = [n for n, _ in old_top3]
+    new_names = [n for n, _ in new_top3]
+
+    new_rank = new_names.index(mover_name) + 1 if mover_name in new_names else 1
+    was_in_top3 = mover_name in old_names
+
+    if new_rank == 1:
+        verb = "moves to #1"
+    elif was_in_top3:
+        verb = f"moves up to #{new_rank}"
+    else:
+        verb = f"crashes into the top 3 at #{new_rank}"
+
+    bumped_off = [n for n in old_names if n not in new_names]
+    dropped_within = [n for n in new_names
+                      if n in old_names and n != mover_name
+                      and new_names.index(n) > old_names.index(n)]
+
+    if new_rank == 1 and old_names and old_names[0] != mover_name:
+        suffix = f" **{old_names[0]}** has been dethroned."
+    elif bumped_off:
+        suffix = f" **{bumped_off[0]}** has been removed from the podium."
+    elif dropped_within:
+        suffix = f" **{dropped_within[0]}** has been reminded of their place."
+    else:
+        suffix = ""
+
+    message = f"🥊 **{mover_name}** {verb} all time.{suffix}"
+
+    lines = []
+    for i, row in enumerate(all_rows, 1):
+        lines.append(
+            f"{_medal(i)} **{row['username']}** — {row['best_score']} best"
+            f"  |  {row['avg_score']:.0f} avg  |  {row['games_played']} games"
+        )
+
+    embed = discord.Embed(
+        title="🌍 All-Time Leaderboard",
+        description=message,
+        color=EMBED_COLOR,
+        url=MAPTAP_URL,
+    )
+    embed.add_field(name="Ranked by best single score", value="\n".join(lines), inline=False)
     return embed
 
 
@@ -183,6 +231,7 @@ def player_stats_embed(username: str, stats: dict) -> discord.Embed:
     embed.add_field(name="🎯 Perfect Scores", value=str(stats.get("perfect_scores", 0)), inline=True)
     embed.add_field(name="💯 Perfect Rounds", value=str(stats.get("perfect_rounds", 0)), inline=True)
     embed.add_field(name="🫗 Fumbles", value=str(stats.get("fumbles", 0)), inline=True)
+    embed.add_field(name="🇰🇿 Nice", value=str(stats.get("nice_count", 0)), inline=True)
     return embed
 
 
@@ -201,6 +250,7 @@ def achievements_embed(username: str, achievements: list) -> discord.Embed:
         "most_improved": "📈 Most Improved",
         "get_a_life": "🤪 Get a Life",
         "mia": "🫧 MIA",
+        "sixty_nine": "🇰🇿 Very Nice (69)",
     }
 
     if not achievements:
@@ -329,6 +379,17 @@ def immediate_achievement_embed(username: str, discord_id: str, achievement: dic
         embed = discord.Embed(
             title=f"💯 {milestone} PERFECT ROUNDS",
             description=f"**{username}** has now scored a perfect 100 on **{milestone}** individual rounds.",
+            color=EMBED_COLOR,
+        )
+    elif t == "sixty_nine":
+        rounds = m.get("rounds", [])
+        if len(rounds) == 1:
+            round_str = f"round {rounds[0]}"
+        else:
+            round_str = ", ".join(f"round {r}" for r in rounds[:-1]) + f" and round {rounds[-1]}"
+        embed = discord.Embed(
+            title="🇰🇿 VERY NICE!! I LIKE THIS!",
+            description=f"**{username}** scored a 69 on {round_str}.",
             color=EMBED_COLOR,
         )
     else:
