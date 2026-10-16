@@ -1,12 +1,10 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from datetime import date
-import pytz
 
 import database as db
 import embeds
-from config import TIMEZONE, HANDICAP_WINDOW_DAYS
+from config import HANDICAP_WINDOW_DAYS, MIN_HANDICAP_GAMES, mt_today
 
 
 class Leaderboard(commands.Cog):
@@ -16,16 +14,16 @@ class Leaderboard(commands.Cog):
     @app_commands.command(name="leaderboard", description="Show the MapTap leaderboard")
     @app_commands.describe(view="Which leaderboard to show")
     @app_commands.choices(view=[
+        app_commands.Choice(name="All Time", value="alltime"),
         app_commands.Choice(name="Today", value="daily"),
         app_commands.Choice(name="This Week", value="weekly"),
         app_commands.Choice(name="This Month", value="monthly"),
-        app_commands.Choice(name="All Time", value="alltime"),
         app_commands.Choice(name="♿ Handicap", value="handicap"),
     ])
-    async def leaderboard(self, interaction: discord.Interaction, view: str = "daily"):
+    async def leaderboard(self, interaction: discord.Interaction, view: str = "alltime"):
         await interaction.response.defer()
 
-        now = date.today()
+        now = mt_today()
 
         if view == "daily":
             scores = await db.get_scores_for_date(now.isoformat())
@@ -53,6 +51,9 @@ class Leaderboard(commands.Cog):
         all_players = await db.get_all_players()
         avgs = []
         for p in all_players:
+            games = await db.get_player_game_count(p["id"])
+            if games < MIN_HANDICAP_GAMES:
+                continue
             rolling = await db.get_player_rolling_avg(p["id"], HANDICAP_WINDOW_DAYS)
             if rolling is not None:
                 avgs.append((p, rolling))
@@ -65,7 +66,7 @@ class Leaderboard(commands.Cog):
         entries = []
         for p, personal_avg in avgs:
             # Need today's score for the adjusted leaderboard
-            today_score = await db.get_score(p["id"], date.today().isoformat())
+            today_score = await db.get_score(p["id"], mt_today().isoformat())
             if today_score is None:
                 continue
             raw = today_score["final_score"]

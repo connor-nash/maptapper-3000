@@ -1,7 +1,7 @@
 import aiosqlite
 import json
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 DB_PATH = os.environ.get("DB_PATH", "maptap.db")
@@ -234,12 +234,23 @@ async def get_all_time_leaderboard() -> list:
         return await cursor.fetchall()
 
 
+async def get_player_game_count(player_id: int) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        row = await _fetchone(db,
+            "SELECT COUNT(*) FROM scores WHERE player_id = ? AND is_legacy = 0",
+            (player_id,)
+        )
+        return row[0] if row else 0
+
+
 async def get_player_rolling_avg(player_id: int, days: int = 30) -> Optional[float]:
+    from config import mt_today
+    cutoff = (mt_today() - timedelta(days=days)).isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         row = await _fetchone(db,
-            "SELECT AVG(final_score) FROM scores WHERE player_id = ? AND is_legacy = 0 AND game_date >= date('now', ?)",
-            (player_id, f"-{days} days")
+            "SELECT AVG(final_score) FROM scores WHERE player_id = ? AND is_legacy = 0 AND game_date >= ?",
+            (player_id, cutoff)
         )
         return row[0] if row and row[0] is not None else None
 

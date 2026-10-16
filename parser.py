@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
+from config import mt_today
+
 MONTHS = {
     "january": 1, "february": 2, "march": 3, "april": 4,
     "may": 5, "june": 6, "july": 7, "august": 8,
@@ -49,8 +51,7 @@ def parse_maptap_share(text: str) -> Optional[ParsedScore]:
         return None
 
     # Use current year; if the month+day would be in the future, use previous year
-    from datetime import date
-    today = date.today()
+    today = mt_today()
     year = today.year
     try:
         game_date = date(year, month, day)

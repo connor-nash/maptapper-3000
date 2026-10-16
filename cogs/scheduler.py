@@ -13,7 +13,7 @@ from discord.ext import commands, tasks
 import database as db
 import achievements as ach
 import embeds
-from config import TIMEZONE, SUMMARY_HOUR, SUMMARY_MINUTE, MAPTAP_URL
+from config import TIMEZONE, SUMMARY_HOUR, SUMMARY_MINUTE, MAPTAP_URL, mt_today
 
 
 class Scheduler(commands.Cog):
@@ -39,8 +39,8 @@ class Scheduler(commands.Cog):
             return
 
         # We post summaries for yesterday (scores are in for the previous day)
-        yesterday = date.today() - timedelta(days=1)
-        today = date.today()
+        yesterday = mt_today() - timedelta(days=1)
+        today = mt_today()
 
         # Daily summary (for yesterday's date)
         daily_period = yesterday.isoformat()

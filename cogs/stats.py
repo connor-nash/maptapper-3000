@@ -6,6 +6,7 @@ from discord.ext import commands
 
 import database as db
 import embeds
+from config import mt_today
 
 
 async def _build_player_stats(player_id: int) -> dict:
@@ -28,7 +29,7 @@ async def _build_player_stats(player_id: int) -> dict:
     # Current streak: consecutive days ending today (or yesterday)
     played_dates = sorted({r["game_date"] for r in all_scores}, reverse=True)
     streak = 0
-    check = date.today()
+    check = mt_today()
     for d in played_dates:
         if d == check.isoformat() or d == (check - timedelta(days=1)).isoformat():
             streak += 1

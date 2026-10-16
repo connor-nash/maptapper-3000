@@ -1,9 +1,13 @@
 import pytz
-from datetime import time
+from datetime import datetime, time
 
 TIMEZONE = pytz.timezone("America/Denver")  # Mountain Time
 SUMMARY_HOUR = 7
 SUMMARY_MINUTE = 0
+
+
+def mt_today():
+    return datetime.now(TIMEZONE).date()
 
 EMBED_COLOR = 0x2ECC71  # Green
 
@@ -30,3 +34,6 @@ WEEK_DROPS = 2
 
 # Handicap rolling window in days
 HANDICAP_WINDOW_DAYS = 30
+
+# Minimum games played before a player appears in the handicap leaderboard
+MIN_HANDICAP_GAMES = 5
