@@ -196,6 +196,47 @@ def shakeup_embed(mover_name: str, old_top3: list, new_top3: list, all_rows: lis
     return embed
 
 
+def shame_board_embed(mover_name: str, old_bottom3: list, new_bottom3: list, bottom_rows: list) -> discord.Embed:
+    old_names = [n for n, _ in old_bottom3]
+    new_names = [n for n, _ in new_bottom3]
+
+    new_rank = new_names.index(mover_name) + 1 if mover_name in new_names else None
+    was_in_bottom3 = mover_name in old_names
+
+    if new_rank == 1:
+        if was_in_bottom3:
+            message = f"💀 **{mover_name}** somehow found a new low. Incredible."
+        else:
+            message = f"💀 **{mover_name}** has claimed the worst score in recorded history."
+    elif new_rank:
+        if was_in_bottom3:
+            message = f"💀 **{mover_name}** digs deeper into the shame board at #{new_rank}."
+        else:
+            message = f"💀 **{mover_name}** crashes into the shame board at #{new_rank}."
+    else:
+        message = f"💀 **{mover_name}** has shaken up the shame board."
+
+    bumped_off = [n for n in old_names if n not in new_names]
+    if bumped_off:
+        message += f" **{bumped_off[0]}** has been mercifully removed from the dishonor roll."
+
+    lines = []
+    for i, row in enumerate(bottom_rows, 1):
+        lines.append(
+            f"💀 **{row['username']}** — {row['worst_score']} worst"
+            f"  |  {row['avg_score']:.0f} avg  |  {row['games_played']} games"
+        )
+
+    embed = discord.Embed(
+        title="🗑️ All-Time Shame Board",
+        description=message,
+        color=0xE74C3C,
+        url=MAPTAP_URL,
+    )
+    embed.add_field(name="Personal worst scores", value="\n".join(lines), inline=False)
+    return embed
+
+
 def handicap_leaderboard_embed(entries: list) -> discord.Embed:
     embed = discord.Embed(
         title="♿ Handicap Leaderboard",
@@ -394,6 +435,22 @@ def immediate_achievement_embed(username: str, discord_id: str, achievement: dic
         embed = discord.Embed(
             title="🇰🇿 VERY NICE!! I LIKE THIS!",
             description=f"**{username}** scored a 69 on {round_str}.",
+            color=EMBED_COLOR,
+        )
+    elif t == "cliff":
+        prev = m["prev_score"]
+        curr = m["curr_score"]
+        drop = m["drop"]
+        embed = discord.Embed(
+            title="📉 THE CLIFF",
+            description=f"**{username}** fell off the cliff. {prev} → {curr} (−{drop} points). Yikes.",
+            color=0xE67E22,
+        )
+    elif t == "deja_vu":
+        score = m["score"]
+        embed = discord.Embed(
+            title="🔁 DÉJÀ VU",
+            description=f"**{username}** scored {score}. Again. Exactly {score}. Are you okay?",
             color=EMBED_COLOR,
         )
     else:

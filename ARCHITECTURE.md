@@ -37,11 +37,12 @@ When a user pastes a MapTap share into the configured channel:
 
 3. **Back in `on_message`:**
    - `db.upsert_player(discord_id, display_name)` — creates or updates the player record. Returns `player_id`.
-   - Snapshots the current all-time top 3 (`pre_rows`).
+   - Snapshots the current all-time top 3 (`pre_rows`) and bottom 3 personal-worst scores (`pre_low_rows`).
    - `db.insert_score(player_id, game_date, round_scores, final_score)` — inserts with `UNIQUE(player_id, game_date)` constraint. Returns `False` if a score for that player/date already exists (first post wins). On duplicate, reacts ✅ and exits.
    - Reacts ✅.
    - Compares new all-time top 3 against `pre_rows`. If top-3 best scores changed, calls `embeds.shakeup_embed()` and posts it, then updates `bot_config.last_top3`.
-   - `ach.check_immediate_achievements(player_id, round_scores, final_score, game_date)` — checks perfect score, turkey, score milestones, perfect-round milestones, sixty_nine. Each type is idempotent (checks `has_achievement` before recording). Returns list of triggered achievement dicts.
+   - Compares new all-time bottom 3 personal-worst scores against `pre_low_rows`. If the bottom-3 worst scores changed, calls `embeds.shame_board_embed()` and posts it.
+   - `ach.check_immediate_achievements(player_id, round_scores, final_score, game_date)` — checks perfect score, turkey, score milestones, perfect-round milestones, sixty_nine, cliff, deja_vu. Each type is idempotent (checks `has_achievement` before recording). Returns list of triggered achievement dicts.
    - For each triggered achievement, posts an immediate embed to the channel.
 
 ---

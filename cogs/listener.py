@@ -43,9 +43,12 @@ class Listener(commands.Cog):
             str(message.author.id), message.author.display_name
         )
 
-        # Capture all-time top 3 before insert for shakeup detection
+        # Capture all-time top 3 and bottom 3 before insert for shakeup detection
         pre_rows = await db.get_all_time_leaderboard()
         old_top3 = [(r["username"], r["best_score"]) for r in pre_rows[:3]]
+
+        pre_low_rows = await db.get_all_time_lowest_leaderboard()
+        old_bottom3 = [(r["username"], r["worst_score"]) for r in pre_low_rows[:3]]
 
         # Insert score (first post wins)
         inserted = await db.insert_score(
@@ -72,6 +75,16 @@ class Listener(commands.Cog):
             await db.set_config("last_top3", json.dumps(
                 [{"username": n, "best_score": s} for n, s in new_top3]
             ))
+
+        # Check all-time bottom 3 shame board
+        post_low_rows = await db.get_all_time_lowest_leaderboard()
+        new_bottom3 = [(r["username"], r["worst_score"]) for r in post_low_rows[:3]]
+        old_low_scores = [s for _, s in old_bottom3]
+        new_low_scores = [s for _, s in new_bottom3]
+        if old_low_scores != new_low_scores:
+            mover = message.author.display_name
+            embed = embeds.shame_board_embed(mover, old_bottom3, new_bottom3, post_low_rows[:3])
+            await message.channel.send(embed=embed)
 
         # Check immediate achievements
         immediate = await ach.check_immediate_achievements(

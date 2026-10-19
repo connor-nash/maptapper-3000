@@ -21,6 +21,9 @@ ROUND_MAX_WEIGHTED = sum(w * 100 for w in ROUND_WEIGHTS)  # 1000
 # it's a Fumble
 FUMBLE_PROJECTED_THRESHOLD = 960
 
+# Cliff threshold: point drop from previous score that triggers the Cliff achievement
+CLIFF_DROP_THRESHOLD = 200
+
 # Milestone thresholds (cumulative total score)
 SCORE_MILESTONES = [100_000, 250_000, 500_000, 1_000_000]
 

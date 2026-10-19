@@ -2,6 +2,8 @@
 
 ## How We Work
 
+**Before starting any coding task:** Read `ARCHITECTURE.md` to understand how the system currently works. Do not rely on CLAUDE.md alone — ARCHITECTURE.md is the authoritative description of runtime behavior, data flows, and component interactions.
+
 **After making changes:** Always summarize what changed in plain English and explain the real-world impact — what the user will see or experience differently, what behavior changed, what risk was removed. Do not just describe the code.
 
 **When planning:** Explain the plan in real-world terms — what will happen, what will look different, what could go wrong. For any UI feature, include an ASCII mockup before writing any code so the layout is agreed on first.
@@ -92,6 +94,7 @@ ROUND_WEIGHTS = [1, 1, 2, 3, 3]             # Per-round score multipliers; weigh
 ROUND_MAX_WEIGHTED = 1000                    # Max possible final_score
 
 FUMBLE_PROJECTED_THRESHOLD = 960            # Projected score (worst-round-replaced) must be >= this for a Fumble
+CLIFF_DROP_THRESHOLD = 200                  # Point drop from previous score that triggers the Cliff achievement
 SCORE_MILESTONES = [100_000, 250_000, 500_000, 1_000_000]  # Cumulative score milestone thresholds
 PERFECT_ROUND_MILESTONES = [100, 200, 300, 500]             # Cumulative perfect-round milestone thresholds
 
@@ -154,6 +157,7 @@ class ParsedScore:
     "player_id": int,
     "achievement_type": str,  # "perfect_score" | "turkey" | "fumble" | "twinsies" | "lost_bud" |
                               # "most_improved" | "get_a_life" | "mia" | "sixty_nine" |
+                              # "cliff" | "deja_vu" |
                               # "score_milestone_{N}" | "perfect_round_milestone_{N}"
     "period": str,            # game date "YYYY-MM-DD" (immediate) | "YYYY-W{ww}" (weekly) | "YYYY-MM" (monthly)
     "metadata": str,          # JSON or NULL — structure varies by type

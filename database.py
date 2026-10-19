@@ -185,6 +185,18 @@ async def get_player_all_scores(player_id: int) -> list:
         return await cursor.fetchall()
 
 
+async def get_player_previous_score(player_id: int, before_date: str) -> Optional[aiosqlite.Row]:
+    """Returns the most recent non-legacy score for a player strictly before before_date."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        return await _fetchone(db,
+            "SELECT final_score, game_date FROM scores "
+            "WHERE player_id = ? AND is_legacy = 0 AND game_date < ? "
+            "ORDER BY game_date DESC LIMIT 1",
+            (player_id, before_date)
+        )
+
+
 async def get_player_cumulative_score(player_id: int) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -239,6 +251,22 @@ async def get_all_time_leaderboard() -> list:
                LEFT JOIN scores s ON s.player_id = p.id
                GROUP BY p.id
                ORDER BY best_score DESC"""
+        )
+        return await cursor.fetchall()
+
+
+async def get_all_time_lowest_leaderboard() -> list:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT p.discord_id, p.username,
+                      MIN(s.final_score) as worst_score,
+                      COUNT(s.id) as games_played,
+                      COALESCE(AVG(s.final_score), 0) as avg_score
+               FROM players p
+               JOIN scores s ON s.player_id = p.id AND s.is_legacy = 0
+               GROUP BY p.id
+               ORDER BY worst_score ASC"""
         )
         return await cursor.fetchall()
 

@@ -6,6 +6,8 @@ Immediate achievements (returned from check_immediate_achievements):
   - turkey: three or more round scores of 100
   - score_milestone: cumulative score crossed a threshold
   - perfect_round_milestone: cumulative perfect rounds crossed a threshold
+  - cliff: score dropped 200+ points from previous game
+  - deja_vu: score exactly matches previous game's score
 
 Daily achievements (returned from check_daily_achievements for a given date):
   - fumble: single bad round killed a projected 960+ game
@@ -23,7 +25,7 @@ Monthly achievements (returned from check_monthly_achievements):
 import json
 from typing import Optional
 from config import (
-    ROUND_WEIGHTS, FUMBLE_PROJECTED_THRESHOLD,
+    ROUND_WEIGHTS, FUMBLE_PROJECTED_THRESHOLD, CLIFF_DROP_THRESHOLD,
     SCORE_MILESTONES, PERFECT_ROUND_MILESTONES,
 )
 import database as db
@@ -101,6 +103,25 @@ async def check_immediate_achievements(
             if not already:
                 await db.record_achievement(player_id, f"perfect_round_milestone_{milestone}", game_date, {"milestone": milestone})
                 results.append({"type": "perfect_round_milestone", "metadata": {"milestone": milestone, "total": total_perfect}})
+
+    # Cliff and Déjà Vu: compare to most recent prior score
+    prev = await db.get_player_previous_score(player_id, game_date)
+    if prev is not None:
+        prev_score = prev["final_score"]
+        drop = prev_score - final_score
+
+        if drop >= CLIFF_DROP_THRESHOLD:
+            already = await db.has_achievement(player_id, "cliff", game_date)
+            if not already:
+                await db.record_achievement(player_id, "cliff", game_date,
+                    {"prev_score": prev_score, "curr_score": final_score, "drop": drop})
+                results.append({"type": "cliff", "metadata": {"prev_score": prev_score, "curr_score": final_score, "drop": drop}})
+
+        if final_score == prev_score:
+            already = await db.has_achievement(player_id, "deja_vu", game_date)
+            if not already:
+                await db.record_achievement(player_id, "deja_vu", game_date, {"score": final_score})
+                results.append({"type": "deja_vu", "metadata": {"score": final_score}})
 
     return results
 
