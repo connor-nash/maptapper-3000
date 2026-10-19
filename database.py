@@ -374,7 +374,10 @@ async def compute_weekly_scores(iso_year: int, iso_week: int) -> list[dict]:
 
 
 async def compute_monthly_scores(year: int, month: int) -> list[dict]:
+    import calendar
+    from config import MONTH_DROPS
     all_scores = await get_scores_for_month(year, month)
+    days_in_month = calendar.monthrange(year, month)[1]
 
     player_data: dict[str, dict] = {}
     for row in all_scores:
@@ -382,19 +385,31 @@ async def compute_monthly_scores(year: int, month: int) -> list[dict]:
         if pid not in player_data:
             player_data[pid] = {
                 "discord_id": row["discord_id"], "username": row["username"],
-                "monthly_total": 0, "games_played": 0, "best_score": 0, "all_scores": [],
+                "games_played": 0, "best_score": 0, "daily_scores": [],
             }
-        player_data[pid]["monthly_total"] += row["final_score"]
         player_data[pid]["games_played"] += 1
-        player_data[pid]["all_scores"].append(row["final_score"])
+        player_data[pid]["daily_scores"].append(row["final_score"])
         if row["final_score"] > player_data[pid]["best_score"]:
             player_data[pid]["best_score"] = row["final_score"]
 
+    results = []
     for d in player_data.values():
-        d["monthly_avg"] = d["monthly_total"] / d["games_played"] if d["games_played"] else 0
+        daily = d["daily_scores"]
+        padded = sorted(daily + [0] * (days_in_month - len(daily)))
+        kept = padded[MONTH_DROPS:]
+        monthly_score = sum(kept)
+        kept_count = days_in_month - MONTH_DROPS
+        monthly_avg = monthly_score / kept_count if kept_count > 0 else 0
+        results.append({
+            "discord_id": d["discord_id"],
+            "username": d["username"],
+            "monthly_score": monthly_score,
+            "monthly_avg": monthly_avg,
+            "best_score": d["best_score"],
+            "games_played": d["games_played"],
+        })
 
-    results = list(player_data.values())
-    results.sort(key=lambda x: x["monthly_total"], reverse=True)
+    results.sort(key=lambda x: x["monthly_score"], reverse=True)
     return results
 
 

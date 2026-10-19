@@ -141,6 +141,17 @@ For a given ISO week (Mon–Sun):
 
 ---
 
+## Monthly Scoring Logic
+
+For a given calendar month:
+1. Collect all non-legacy scores for the month, grouped by player.
+2. Each player has `days_in_month` slots. Unplayed days = 0.
+3. Sort all slots ascending, drop the 8 lowest (`MONTH_DROPS`), sum the rest → `monthly_score`.
+4. `monthly_avg = monthly_score / (days_in_month - 8)`.
+5. Missed days absorb drops first: a player who missed 10 days of a 30-day month will have 8 zeros dropped, leaving 2 zeros + all real scores in the kept set. Only if fewer than 8 days were missed do any real scores get dropped.
+
+---
+
 ## Legacy Score / Account Linking
 
 Three players had best scores before the bot existed. These were seeded on first boot via `_seed_legacy_scores()` using placeholder `discord_id` values (`seed:{username}`). `db.link_player(username, real_discord_id)` merges the seed record into the real player: if the real Discord user already has a player row (because they've since posted a live score), their scores and achievements tables are re-pointed to the real player ID and the seed row is deleted. If not, the seed row's `discord_id` is updated to the real one.

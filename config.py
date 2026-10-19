@@ -32,6 +32,9 @@ WEEK_DAYS = 7
 # Number of scores to drop each week
 WEEK_DROPS = 2
 
+# Number of lowest scores to drop each month (fixed regardless of month length)
+MONTH_DROPS = 8
+
 # Handicap rolling window in days
 HANDICAP_WINDOW_DAYS = 30
 

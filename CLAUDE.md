@@ -97,6 +97,7 @@ PERFECT_ROUND_MILESTONES = [100, 200, 300, 500]             # Cumulative perfect
 
 WEEK_DAYS = 7                                # Slots per weekly leaderboard (Mon–Sun)
 WEEK_DROPS = 2                               # Lowest scores dropped each week before summing
+MONTH_DROPS = 8                              # Lowest scores dropped each month (fixed regardless of month length)
 
 HANDICAP_WINDOW_DAYS = 30                    # Rolling average window for handicap calculation
 MIN_HANDICAP_GAMES = 5                       # Minimum games played before player appears in handicap leaderboard
@@ -176,10 +177,10 @@ class ParsedScore:
 {
     "discord_id": str,
     "username": str,
-    "monthly_total": int,
-    "monthly_avg": float,
+    "monthly_score": int,   # sum of kept scores after dropping 8 lowest slots (missed days = 0)
+    "monthly_avg": float,   # monthly_score / (days_in_month - 8)
     "best_score": int,
-    "games_played": int,
+    "games_played": int,    # actual days played (not slots)
 }
 ```
 
