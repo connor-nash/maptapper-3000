@@ -50,16 +50,11 @@ def parse_maptap_share(text: str) -> Optional[ParsedScore]:
     if not all(0 <= r <= 100 for r in round_scores):
         return None
 
-    # Use current year; if the month+day would be in the future, use previous year
-    today = mt_today()
-    year = today.year
+    year = mt_today().year
     try:
         game_date = date(year, month, day)
     except ValueError:
         return None
-
-    if game_date > today:
-        game_date = date(year - 1, month, day)
 
     return ParsedScore(
         game_date=game_date.isoformat(),
