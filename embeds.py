@@ -92,7 +92,7 @@ def monthly_leaderboard_embed(year: int, month: int, monthly_data: list) -> disc
         url=MAPTAP_URL,
     )
     embed.description = (
-        "Drop 8 lowest scores (including missed days), sum the remaining.\n"
+        "Drop 8 lowest scores (including missed days), average the remaining.\n"
         f"Play at [maptap.gg]({MAPTAP_URL})"
     )
 
@@ -100,13 +100,15 @@ def monthly_leaderboard_embed(year: int, month: int, monthly_data: list) -> disc
         embed.add_field(name="No scores this month", value="​", inline=False)
         return embed
 
-    # Total (drop-8 sum)
-    by_total = sorted(monthly_data, key=lambda x: x["monthly_score"], reverse=True)
-    total_lines = [
-        f"{_medal(i)} **{d['username']}** — {d['monthly_score']:,} *({d['games_played']}/{days_in_month} days)*"
-        for i, d in enumerate(by_total, 1)
+    # Average (of kept scores) — primary ranking
+    by_avg = sorted(monthly_data, key=lambda x: x["monthly_avg"], reverse=True)
+    avg_lines = [
+        f"{_medal(i)} **{d['username']}** — {d['monthly_avg']:.1f} *({d['games_played']}/{days_in_month} days)*"
+        for i, d in enumerate(by_avg, 1)
     ]
-    embed.add_field(name="🏅 Total (Drop-8)", value="\n".join(total_lines), inline=False)
+    embed.add_field(name="🏅 Average Score (Drop-8)", value="\n".join(avg_lines), inline=False)
+
+    embed.add_field(name="​", value="​", inline=False)
 
     # Best single score
     by_best = sorted(monthly_data, key=lambda x: x["best_score"], reverse=True)
@@ -115,14 +117,6 @@ def monthly_leaderboard_embed(year: int, month: int, monthly_data: list) -> disc
         for i, d in enumerate(by_best, 1)
     ]
     embed.add_field(name="⚡ Best Single Score", value="\n".join(best_lines), inline=False)
-
-    # Average (of kept scores)
-    by_avg = sorted(monthly_data, key=lambda x: x["monthly_avg"], reverse=True)
-    avg_lines = [
-        f"{_medal(i)} **{d['username']}** — {d['monthly_avg']:.1f} avg"
-        for i, d in enumerate(by_avg, 1)
-    ]
-    embed.add_field(name="📊 Average (Drop-8)", value="\n".join(avg_lines), inline=False)
 
     return embed
 
