@@ -112,6 +112,7 @@ class Admin(commands.Cog):
             inserted = await db.insert_score(player_id, parsed.game_date, parsed.round_scores, parsed.final_score)
             if inserted:
                 recovered += 1
+                await message.add_reaction("✅")
             else:
                 skipped += 1
 
