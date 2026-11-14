@@ -361,6 +361,20 @@ async def get_player_achievements(player_id: int) -> list:
 
 # --- Weekly / Monthly helpers ---
 
+async def get_weekly_bungus(iso_year: int, iso_week: int) -> dict | None:
+    """Return the player with the single worst submitted game that week (no missed-day zeros)."""
+    all_scores = await get_scores_for_week(iso_year, iso_week)
+    if not all_scores:
+        return None
+    worst_row = min(all_scores, key=lambda r: r["final_score"])
+    return {
+        "discord_id": worst_row["discord_id"],
+        "username": worst_row["username"],
+        "worst_score": worst_row["final_score"],
+        "game_date": worst_row["game_date"],
+    }
+
+
 async def compute_weekly_scores(iso_year: int, iso_week: int) -> list[dict]:
     all_scores = await get_scores_for_week(iso_year, iso_week)
 

@@ -39,14 +39,14 @@ def daily_leaderboard_embed(game_date: str, scores: list) -> discord.Embed:
     return embed
 
 
-def weekly_leaderboard_embed(iso_year: int, iso_week: int, weekly_data: list) -> discord.Embed:
+def weekly_leaderboard_embed(iso_year: int, iso_week: int, weekly_data: list, bungus: dict | None = None) -> discord.Embed:
     embed = discord.Embed(
         title=f"📅 Weekly Recap — Week {iso_week}, {iso_year}",
         color=EMBED_COLOR,
         url=MAPTAP_URL,
     )
     embed.description = (
-        "Drop 2 lowest scores (including missed days), sum the remaining 5.\n"
+        "Drop 2 lowest scores (including missed days), average the remaining 5.\n"
         f"Play at [maptap.gg]({MAPTAP_URL})"
     )
 
@@ -55,15 +55,15 @@ def weekly_leaderboard_embed(iso_year: int, iso_week: int, weekly_data: list) ->
         embed.add_field(name="No scores this week", value="​", inline=False)
         return embed
 
-    # Total (drop-2 sum)
-    by_total = sorted(active, key=lambda x: x["weekly_score"], reverse=True)
-    total_lines = [
-        f"{_medal(i)} **{d['username']}** — {d['weekly_score']:,} *({d['games_played']}/7 days)*"
-        for i, d in enumerate(by_total, 1)
+    by_avg = sorted(active, key=lambda x: x["weekly_avg"], reverse=True)
+    avg_lines = [
+        f"{_medal(i)} **{d['username']}** — {d['weekly_avg']:.1f} *({d['games_played']}/7 days)*"
+        for i, d in enumerate(by_avg, 1)
     ]
-    embed.add_field(name="🏅 Total (Drop-2)", value="\n".join(total_lines), inline=False)
+    embed.add_field(name="🏅 Average Score (Drop-2)", value="\n".join(avg_lines), inline=False)
 
-    # Best single score
+    embed.add_field(name="​", value="​", inline=False)
+
     by_best = sorted(active, key=lambda x: x["best_score"], reverse=True)
     best_lines = [
         f"{_medal(i)} **{d['username']}** — {d['best_score']}"
@@ -71,13 +71,14 @@ def weekly_leaderboard_embed(iso_year: int, iso_week: int, weekly_data: list) ->
     ]
     embed.add_field(name="⚡ Best Single Score", value="\n".join(best_lines), inline=False)
 
-    # Average (of the 5 kept scores)
-    by_avg = sorted(active, key=lambda x: x["weekly_avg"], reverse=True)
-    avg_lines = [
-        f"{_medal(i)} **{d['username']}** — {d['weekly_avg']:.1f} avg"
-        for i, d in enumerate(by_avg, 1)
-    ]
-    embed.add_field(name="📊 Average (Drop-2)", value="\n".join(avg_lines), inline=False)
+    if bungus:
+        embed.add_field(name="​", value="​", inline=False)
+        game_date = date.fromisoformat(bungus["game_date"])
+        embed.add_field(
+            name="💩 Bungus Jones",
+            value=f"**{bungus['username']}** — {bungus['worst_score']} ({game_date.strftime('%b %-d')})",
+            inline=False,
+        )
 
     return embed
 

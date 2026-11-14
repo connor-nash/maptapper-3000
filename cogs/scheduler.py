@@ -128,13 +128,40 @@ class Scheduler(commands.Cog):
 
     async def _post_weekly_summary(self, channel: discord.TextChannel, iso_year: int, iso_week: int):
         weekly_data = await db.compute_weekly_scores(iso_year, iso_week)
-        embed = embeds.weekly_leaderboard_embed(iso_year, iso_week, weekly_data)
+        bungus = await db.get_weekly_bungus(iso_year, iso_week)
+
+        embed = embeds.weekly_leaderboard_embed(iso_year, iso_week, weekly_data, bungus)
 
         weekly_achievements = await ach.check_weekly_achievements(iso_year, iso_week)
         for name, value in embeds.weekly_achievements_fields(weekly_achievements):
             embed.add_field(name=name, value=value, inline=False)
 
         await channel.send(embed=embed)
+        await self._crown_bungus_jones(channel.guild, bungus)
+
+    async def _crown_bungus_jones(self, guild: discord.Guild, bungus: dict | None):
+        prev_id = await db.get_config("current_bungus_id")
+
+        # Clear previous Bungus Jones's nickname if they're a different person
+        if prev_id and (bungus is None or prev_id != bungus["discord_id"]):
+            prev_member = guild.get_member(int(prev_id))
+            if prev_member:
+                try:
+                    await prev_member.edit(nick=None)
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
+
+        if bungus is None:
+            await db.set_config("current_bungus_id", "")
+            return
+
+        await db.set_config("current_bungus_id", bungus["discord_id"])
+        new_member = guild.get_member(int(bungus["discord_id"]))
+        if new_member:
+            try:
+                await new_member.edit(nick="Bungus Jones")
+            except (discord.Forbidden, discord.HTTPException):
+                pass
 
     async def _post_monthly_summary(self, channel: discord.TextChannel, year: int, month: int):
         monthly_data = await db.compute_monthly_scores(year, month)

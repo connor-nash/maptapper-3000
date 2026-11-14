@@ -54,6 +54,7 @@ class MapTapper(commands.Bot):
 def main():
     intents = discord.Intents.default()
     intents.message_content = True
+    intents.members = True
 
     bot = MapTapper(command_prefix="!", intents=intents)
     bot.run(TOKEN)

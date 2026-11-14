@@ -18,6 +18,25 @@ class Listener(commands.Cog):
         self.bot = bot
 
     @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        if before.nick == after.nick:
+            return
+        bungus_id = await db.get_config("current_bungus_id")
+        if not bungus_id or str(after.id) != bungus_id:
+            return
+        if after.nick == "Bungus Jones":
+            return
+        try:
+            await after.edit(nick="Bungus Jones")
+        except discord.Forbidden:
+            return
+        channel_id = await db.get_config("score_channel_id")
+        if channel_id:
+            channel = self.bot.get_channel(int(channel_id))
+            if channel:
+                await channel.send("No.")
+
+    @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot:
             return
