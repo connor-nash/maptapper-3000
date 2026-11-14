@@ -115,6 +115,9 @@ class Admin(commands.Cog):
             else:
                 skipped += 1
 
+        if recovered > 0:
+            await channel.send("I'M BACK, BITCH! Do not worry, all scores from today will be recovered and counted.")
+
         await interaction.followup.send(
             f"Recovery complete for `{target_date}`: **{recovered}** scores added, **{skipped}** already on record.",
             ephemeral=True,
