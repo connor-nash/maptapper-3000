@@ -3,6 +3,8 @@ from discord import app_commands
 from discord.ext import commands
 
 import database as db
+from parser import parse_maptap_share, looks_like_maptap
+from config import mt_today
 
 
 class Admin(commands.Cog):
@@ -76,10 +78,53 @@ class Admin(commands.Cog):
                 ephemeral=True,
             )
 
+    @admin_group.command(name="recover-scores", description="Re-process missed scores from channel history for a given date")
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(date="Date to recover in YYYY-MM-DD format (defaults to today)")
+    async def recover_scores(self, interaction: discord.Interaction, date: str = ""):
+        await interaction.response.defer(ephemeral=True)
+
+        target_date = date.strip() or mt_today().isoformat()
+
+        channel_id = await db.get_config("score_channel_id")
+        if not channel_id:
+            await interaction.followup.send("No score channel configured.", ephemeral=True)
+            return
+
+        channel = interaction.guild.get_channel(int(channel_id))
+        if channel is None:
+            await interaction.followup.send("Score channel not found.", ephemeral=True)
+            return
+
+        recovered = 0
+        skipped = 0
+
+        async for message in channel.history(limit=500):
+            if message.author.bot:
+                continue
+            if not looks_like_maptap(message.content):
+                continue
+            parsed = parse_maptap_share(message.content)
+            if parsed is None or parsed.game_date != target_date:
+                continue
+
+            player_id = await db.upsert_player(str(message.author.id), message.author.display_name)
+            inserted = await db.insert_score(player_id, parsed.game_date, parsed.round_scores, parsed.final_score)
+            if inserted:
+                recovered += 1
+            else:
+                skipped += 1
+
+        await interaction.followup.send(
+            f"Recovery complete for `{target_date}`: **{recovered}** scores added, **{skipped}** already on record.",
+            ephemeral=True,
+        )
+
     @set_channel.error
     @reset.error
     @status.error
     @link_player.error
+    @recover_scores.error
     async def admin_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.MissingPermissions):
             await interaction.response.send_message("You need Administrator permission for that.", ephemeral=True)

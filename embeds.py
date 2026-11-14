@@ -290,7 +290,7 @@ def achievements_embed(username: str, achievements: list) -> discord.Embed:
     ACHIEVEMENT_LABELS = {
         "perfect_score": "🎯 Perfect Score (1000)",
         "turkey": "🦃 The Turkey (3× 100 in one game)",
-        "fumble": "🫗 Fumble",
+        "fumble": "🏈 Fumble",
         "twinsies": "👯 Twinsies",
         "lost_bud": "🗺️ I Think Yer Fuckin' Lost Bud",
         "most_improved": "📈 Most Improved",
@@ -336,13 +336,7 @@ def daily_achievements_field(achievements: list) -> list[tuple[str, str]]:
     for a in achievements:
         t = a["type"]
         m = a.get("metadata", {})
-        if t == "fumble":
-            fields.append((
-                "🫗 Fumble",
-                f"**{a['username']}** had round {m['worst_round']} score of **{m['worst_score']}** "
-                f"— projected {m['projected']} without it, actually got {m['actual']}."
-            ))
-        elif t == "twinsies":
+        if t == "twinsies":
             players_str = " & ".join(f"**{n}**" for n in a["players"])
             fields.append((
                 "👯 Twinsies",
@@ -427,6 +421,13 @@ def immediate_achievement_embed(username: str, discord_id: str, achievement: dic
             description=f"**{username}** has now scored a perfect 100 on **{milestone}** individual rounds.",
             color=EMBED_COLOR,
         )
+    elif t == "fumble":
+        embed = discord.Embed(
+            title="🏈 FUMBLE",
+            description=f"**{username}** fumbled it. Round {m['worst_round']} score of **{m['worst_score']}** "
+                        f"tanked what should have been a {m['projected']}. Got {m['actual']} instead.",
+            color=0xE67E22,
+        )
     elif t == "sixty_nine":
         rounds = m.get("rounds", [])
         if len(rounds) == 1:
@@ -437,15 +438,6 @@ def immediate_achievement_embed(username: str, discord_id: str, achievement: dic
             title="🇰🇿 VERY NICE!! I LIKE THIS!",
             description=f"**{username}** scored a 69 on {round_str}.",
             color=EMBED_COLOR,
-        )
-    elif t == "cliff":
-        prev = m["prev_score"]
-        curr = m["curr_score"]
-        drop = m["drop"]
-        embed = discord.Embed(
-            title="📉 THE CLIFF",
-            description=f"**{username}** fell off the cliff. {prev} → {curr} (−{drop} points). Yikes.",
-            color=0xE67E22,
         )
     elif t == "deja_vu":
         score = m["score"]
