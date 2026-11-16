@@ -158,9 +158,13 @@ class Scheduler(commands.Cog):
     async def _crown_bungus_jones(self, guild: discord.Guild, iso_year: int, iso_week: int):
         bungus = await db.get_weekly_bungus(iso_year, iso_week)
         prev_id = await db.get_config("current_bungus_id")
+        new_id = bungus["discord_id"] if bungus else ""
 
-        # Clear previous Bungus Jones's nickname if they're a different person
-        if prev_id and (bungus is None or prev_id != bungus["discord_id"]):
+        # Update current_bungus_id BEFORE clearing the previous member's nick so
+        # on_member_update doesn't mistake the un-Bungusing for an escape attempt.
+        await db.set_config("current_bungus_id", new_id)
+
+        if prev_id and prev_id != new_id:
             prev_member = guild.get_member(int(prev_id))
             if prev_member:
                 try:
@@ -168,12 +172,10 @@ class Scheduler(commands.Cog):
                 except (discord.Forbidden, discord.HTTPException):
                     pass
 
-        if bungus is None:
-            await db.set_config("current_bungus_id", "")
+        if not new_id:
             return
 
-        await db.set_config("current_bungus_id", bungus["discord_id"])
-        new_member = guild.get_member(int(bungus["discord_id"]))
+        new_member = guild.get_member(int(new_id))
         if new_member:
             try:
                 await new_member.edit(nick="Bungus Jones")
