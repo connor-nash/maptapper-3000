@@ -361,6 +361,41 @@ async def get_player_achievements(player_id: int) -> list:
 
 # --- Weekly / Monthly helpers ---
 
+def compute_daily_highlights(scores: list) -> dict:
+    from config import ROUND_WEIGHTS
+    players = [(row["username"], json.loads(row["round_scores"])) for row in scores]
+    count = len(players)
+    round_avgs = [sum(rounds[i] for _, rounds in players) / count for i in range(5)]
+    hardest_idx = min(range(5), key=lambda i: round_avgs[i])
+
+    shot = None
+    if count >= 2:
+        for name, rounds in players:
+            for i, score in enumerate(rounds):
+                # Compare against everyone else so a player can't drag the baseline toward themselves.
+                others_avg = (round_avgs[i] * count - score) / (count - 1)
+                value = (score - others_avg) * ROUND_WEIGHTS[i]
+                if value > 0 and (shot is None or value > shot["value"]):
+                    shot = {"username": name, "round": i + 1, "score": score,
+                            "group_avg": others_avg, "value": value}
+
+    whiff = None
+    for name, rounds in players:
+        for i, score in enumerate(rounds):
+            cost = (100 - score) * ROUND_WEIGHTS[i]
+            if cost > 0 and (whiff is None or cost > whiff["cost"]):
+                whiff = {"username": name, "round": i + 1, "score": score, "cost": cost}
+
+    return {
+        "group_avg": sum(row["final_score"] for row in scores) / count,
+        "player_count": count,
+        "hardest_round": hardest_idx + 1,
+        "hardest_round_avg": round_avgs[hardest_idx],
+        "shot": shot,
+        "whiff": whiff,
+    }
+
+
 async def get_weekly_bungus(iso_year: int, iso_week: int) -> dict | None:
     """Return the player with the single worst submitted game that week (no missed-day zeros)."""
     all_scores = await get_scores_for_week(iso_year, iso_week)

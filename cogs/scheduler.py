@@ -6,15 +6,17 @@ Scheduled summary posts.
 """
 
 import json
+import logging
 from datetime import datetime, date, timedelta
-import pytz
 import discord
 from discord.ext import commands, tasks
 
 import database as db
 import achievements as ach
 import embeds
-from config import TIMEZONE, SUMMARY_HOUR, SUMMARY_MINUTE, MAPTAP_URL, mt_today
+from config import TIMEZONE, SUMMARY_HOUR, SUMMARY_MINUTE, mt_today
+
+log = logging.getLogger(__name__)
 
 # Initial all-time top 3 before any real scores were posted
 _INITIAL_TOP3 = [
@@ -35,15 +37,23 @@ class Scheduler(commands.Cog):
     @tasks.loop(minutes=1)
     async def check_summaries(self):
         now = datetime.now(TIMEZONE)
-        if now.hour != SUMMARY_HOUR or now.minute != SUMMARY_MINUTE:
+        if (now.hour, now.minute) < (SUMMARY_HOUR, SUMMARY_MINUTE):
             return
         await self._post_pending_summaries()
 
     @check_summaries.before_loop
     async def before_check(self):
         await self.bot.wait_until_ready()
-        await self._post_pending_summaries()
-        await self._check_shakeup_catchup()
+        try:
+            await self._post_pending_summaries()
+            await self._check_shakeup_catchup()
+        except Exception:
+            log.exception("Startup catch-up failed")
+
+    @check_summaries.error
+    async def on_loop_error(self, error: Exception):
+        log.exception("Scheduler loop crashed; restarting", exc_info=error)
+        self.check_summaries.restart()
 
     async def _post_pending_summaries(self):
         channel_id = await db.get_config("score_channel_id")
@@ -53,34 +63,40 @@ class Scheduler(commands.Cog):
         if channel is None:
             return
 
-        yesterday = mt_today() - timedelta(days=1)
         today = mt_today()
+        yesterday = today - timedelta(days=1)
+        await self._post_once("daily", yesterday.isoformat(),
+                              lambda: self._post_daily_summary(channel, yesterday))
 
-        # Daily summary (for yesterday)
-        daily_period = yesterday.isoformat()
-        if not await db.is_summary_posted("daily", daily_period):
-            await self._post_daily_summary(channel, yesterday)
-            await db.mark_summary_posted("daily", daily_period)
+        # Always target the most recently completed week/month so a missed Monday or 1st still posts.
+        last_week = today - timedelta(days=today.weekday() + 7)
+        iso_year, iso_week, _ = last_week.isocalendar()
+        weekly_posted = await self._post_once("weekly", f"{iso_year}-W{iso_week:02d}",
+                                              lambda: self._post_weekly_summary(channel, iso_year, iso_week))
+        if weekly_posted:
+            await self._run_safely("Bungus crowning",
+                                   lambda: self._crown_bungus_jones(channel.guild, iso_year, iso_week))
 
-        # Weekly summary: post on Monday for the previous week
-        if today.weekday() == 0:
-            prev_monday = today - timedelta(days=7)
-            iso_year, iso_week, _ = prev_monday.isocalendar()
-            weekly_period = f"{iso_year}-W{iso_week:02d}"
-            if not await db.is_summary_posted("weekly", weekly_period):
-                await self._post_weekly_summary(channel, iso_year, iso_week)
-                await db.mark_summary_posted("weekly", weekly_period)
+        last_month = today.replace(day=1) - timedelta(days=1)
+        await self._post_once("monthly", f"{last_month.year:04d}-{last_month.month:02d}",
+                              lambda: self._post_monthly_summary(channel, last_month.year, last_month.month))
 
-        # Monthly summary: post on 1st for previous month
-        if today.day == 1:
-            if today.month == 1:
-                prev_year, prev_month = today.year - 1, 12
-            else:
-                prev_year, prev_month = today.year, today.month - 1
-            monthly_period = f"{prev_year:04d}-{prev_month:02d}"
-            if not await db.is_summary_posted("monthly", monthly_period):
-                await self._post_monthly_summary(channel, prev_year, prev_month)
-                await db.mark_summary_posted("monthly", monthly_period)
+    async def _post_once(self, summary_type: str, period: str, post) -> bool:
+        if await db.is_summary_posted(summary_type, period):
+            return False
+        if not await self._run_safely(f"{summary_type} summary for {period}", post):
+            return False
+        await db.mark_summary_posted(summary_type, period)
+        return True
+
+    async def _run_safely(self, label: str, action) -> bool:
+        # One failed post (Discord outage, bad embed) must not take down the other summaries or the loop.
+        try:
+            await action()
+            return True
+        except Exception:
+            log.exception("%s failed", label)
+            return False
 
     async def _check_shakeup_catchup(self):
         """On startup, post a shakeup if the all-time top 3 changed since last announced."""
@@ -137,9 +153,9 @@ class Scheduler(commands.Cog):
             embed.add_field(name=name, value=value, inline=False)
 
         await channel.send(embed=embed)
-        await self._crown_bungus_jones(channel.guild, bungus)
 
-    async def _crown_bungus_jones(self, guild: discord.Guild, bungus: dict | None):
+    async def _crown_bungus_jones(self, guild: discord.Guild, iso_year: int, iso_week: int):
+        bungus = await db.get_weekly_bungus(iso_year, iso_week)
         prev_id = await db.get_config("current_bungus_id")
 
         # Clear previous Bungus Jones's nickname if they're a different person

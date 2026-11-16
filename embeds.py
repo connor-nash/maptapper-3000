@@ -6,36 +6,81 @@ All leaderboards and summaries are built here.
 import json
 from datetime import date
 import discord
+from discord.utils import escape_markdown
 from config import EMBED_COLOR, MAPTAP_URL
+from database import compute_daily_highlights
 
 
 MEDAL = {1: "🥇", 2: "🥈", 3: "🥉"}
+
+FIELD_VALUE_LIMIT = 1024
+ALL_TIME_ROW_LIMIT = 15
 
 
 def _medal(rank: int) -> str:
     return MEDAL.get(rank, f"**{rank}.**")
 
 
+def _add_list_field(embed: discord.Embed, name: str, lines: list[str]):
+    # Discord rejects field values over 1024 chars, so long lists spill into unnamed continuation fields.
+    chunk: list[str] = []
+    for line in lines:
+        if chunk and len("\n".join(chunk + [line])) > FIELD_VALUE_LIMIT:
+            embed.add_field(name=name, value="\n".join(chunk), inline=False)
+            name, chunk = "\u200b", []
+        chunk.append(line[:FIELD_VALUE_LIMIT])
+    if chunk:
+        embed.add_field(name=name, value="\n".join(chunk), inline=False)
+
+
+def _all_time_lines(rows: list) -> list[str]:
+    lines = [
+        f"{_medal(i)} **{row['username']}** — {row['best_score']} best"
+        f"  |  {row['avg_score']:.0f} avg  |  {row['games_played']} games"
+        for i, row in enumerate(rows[:ALL_TIME_ROW_LIMIT], 1)
+    ]
+    if len(rows) > ALL_TIME_ROW_LIMIT:
+        lines.append(f"*…and {len(rows) - ALL_TIME_ROW_LIMIT} more*")
+    return lines
+
+
 def daily_leaderboard_embed(game_date: str, scores: list) -> discord.Embed:
-    today = date.fromisoformat(game_date)
+    day = date.fromisoformat(game_date)
     embed = discord.Embed(
-        title=f"📍 MapTap Daily — {today.strftime('%B %-d')}",
+        title=f"📍 MapTap Daily — {day.strftime('%A, %b %-d')}",
         color=EMBED_COLOR,
         url=MAPTAP_URL,
     )
-    embed.description = f"Play today's game at [maptap.gg]({MAPTAP_URL})"
 
     if not scores:
+        embed.description = f"Play today's game at [maptap.gg]({MAPTAP_URL})"
         embed.add_field(name="No scores posted yet", value="Be the first!", inline=False)
         return embed
 
     lines = []
     for i, row in enumerate(scores, 1):
-        rounds = json.loads(row["round_scores"])
-        rounds_str = " | ".join(str(r) for r in rounds)
-        lines.append(f"{_medal(i)} **{row['username']}** — {row['final_score']}  ·  {rounds_str}")
+        rounds = " · ".join(str(r) for r in json.loads(row["round_scores"]))
+        lines.append(f"{MEDAL.get(i, f'{i}.')} {escape_markdown(row['username'])} — **{row['final_score']}**  ·  {rounds}")
+    _add_list_field(embed, "Leaderboard", lines)
 
-    embed.add_field(name="Leaderboard", value="\n".join(lines), inline=False)
+    h = compute_daily_highlights(scores)
+    numbers = [
+        f"Group avg **{h['group_avg']:.0f}** · {h['player_count']} players · "
+        f"Hardest round: R{h['hardest_round']} (avg {h['hardest_round_avg']:.0f})"
+    ]
+    if h["shot"]:
+        s = h["shot"]
+        numbers.append(
+            f"🎯 Shot of the day: **{escape_markdown(s['username'])}** — {s['score']} on R{s['round']}, "
+            f"group avg {s['group_avg']:.0f} (+{s['value']:.0f})"
+        )
+    if h["whiff"]:
+        w = h["whiff"]
+        numbers.append(
+            f"🫠 Whiff of the day: **{escape_markdown(w['username'])}** — {w['score']} on R{w['round']} "
+            f"(−{w['cost']} pts)"
+        )
+    embed.add_field(name="📊 The Day in Numbers", value="\n".join(numbers), inline=False)
     return embed
 
 
@@ -60,7 +105,7 @@ def weekly_leaderboard_embed(iso_year: int, iso_week: int, weekly_data: list, bu
         f"{_medal(i)} **{d['username']}** — {d['weekly_avg']:.1f} *({d['games_played']}/7 days)*"
         for i, d in enumerate(by_avg, 1)
     ]
-    embed.add_field(name="🏅 Average Score (Drop-2)", value="\n".join(avg_lines), inline=False)
+    _add_list_field(embed, "🏅 Average Score (Drop-2)", avg_lines)
 
     embed.add_field(name="​", value="​", inline=False)
 
@@ -69,7 +114,7 @@ def weekly_leaderboard_embed(iso_year: int, iso_week: int, weekly_data: list, bu
         f"{_medal(i)} **{d['username']}** — {d['best_score']}"
         for i, d in enumerate(by_best, 1)
     ]
-    embed.add_field(name="⚡ Best Single Score", value="\n".join(best_lines), inline=False)
+    _add_list_field(embed, "⚡ Best Single Score", best_lines)
 
     if bungus:
         embed.add_field(name="​", value="​", inline=False)
@@ -106,7 +151,7 @@ def monthly_leaderboard_embed(year: int, month: int, monthly_data: list) -> disc
         f"{_medal(i)} **{d['username']}** — {d['monthly_avg']:.1f} *({d['games_played']}/{days_in_month} days)*"
         for i, d in enumerate(by_avg, 1)
     ]
-    embed.add_field(name="🏅 Average Score (Drop-8)", value="\n".join(avg_lines), inline=False)
+    _add_list_field(embed, "🏅 Average Score (Drop-8)", avg_lines)
 
     embed.add_field(name="​", value="​", inline=False)
 
@@ -116,7 +161,7 @@ def monthly_leaderboard_embed(year: int, month: int, monthly_data: list) -> disc
         f"{_medal(i)} **{d['username']}** — {d['best_score']}"
         for i, d in enumerate(by_best, 1)
     ]
-    embed.add_field(name="⚡ Best Single Score", value="\n".join(best_lines), inline=False)
+    _add_list_field(embed, "⚡ Best Single Score", best_lines)
 
     return embed
 
@@ -133,14 +178,7 @@ def all_time_leaderboard_embed(rows: list) -> discord.Embed:
         embed.add_field(name="No scores yet", value="​", inline=False)
         return embed
 
-    lines = []
-    for i, row in enumerate(rows, 1):
-        lines.append(
-            f"{_medal(i)} **{row['username']}** — {row['best_score']} best"
-            f"  |  {row['avg_score']:.0f} avg  |  {row['games_played']} games"
-        )
-
-    embed.add_field(name="Rankings", value="\n".join(lines), inline=False)
+    _add_list_field(embed, "Rankings", _all_time_lines(rows))
     return embed
 
 
@@ -174,20 +212,13 @@ def shakeup_embed(mover_name: str, old_top3: list, new_top3: list, all_rows: lis
 
     message = f"🥊 **{mover_name}** {verb} all time.{suffix}"
 
-    lines = []
-    for i, row in enumerate(all_rows, 1):
-        lines.append(
-            f"{_medal(i)} **{row['username']}** — {row['best_score']} best"
-            f"  |  {row['avg_score']:.0f} avg  |  {row['games_played']} games"
-        )
-
     embed = discord.Embed(
         title="🌍 All-Time Leaderboard",
         description=message,
         color=EMBED_COLOR,
         url=MAPTAP_URL,
     )
-    embed.add_field(name="Ranked by best single score", value="\n".join(lines), inline=False)
+    _add_list_field(embed, "Ranked by best single score", _all_time_lines(all_rows))
     return embed
 
 
@@ -228,7 +259,7 @@ def shame_board_embed(mover_name: str, old_bottom3: list, new_bottom3: list, bot
         color=0xE74C3C,
         url=MAPTAP_URL,
     )
-    embed.add_field(name="Personal worst scores", value="\n".join(lines), inline=False)
+    _add_list_field(embed, "Personal worst scores", lines)
     return embed
 
 
@@ -252,7 +283,7 @@ def handicap_leaderboard_embed(entries: list) -> discord.Embed:
             f"*(raw {e['raw']}, handicap {delta_str})*"
         )
 
-    embed.add_field(name="Rankings", value="\n".join(lines), inline=False)
+    _add_list_field(embed, "Rankings", lines)
     return embed
 
 

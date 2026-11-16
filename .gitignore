@@ -4,3 +4,6 @@
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+bungus_test_output.png
+wanted_template.png

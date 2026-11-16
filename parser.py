@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
-from config import mt_today
+from config import ROUND_WEIGHTS, mt_today
 
 MONTHS = {
     "january": 1, "february": 2, "march": 3, "april": 4,
@@ -23,6 +23,19 @@ _PATTERN = re.compile(
     r"Final score:\s*(\d+)",
     re.IGNORECASE,
 )
+
+
+def _closest_date(month: int, day: int, today: date) -> Optional[date]:
+    # The share text has no year, so a Dec 31 game pasted on Jan 1 must resolve to last year.
+    candidates = []
+    for year in (today.year - 1, today.year, today.year + 1):
+        try:
+            candidates.append(date(year, month, day))
+        except ValueError:
+            pass
+    if not candidates:
+        return None
+    return min(candidates, key=lambda d: abs((d - today).days))
 
 
 @dataclass
@@ -50,10 +63,11 @@ def parse_maptap_share(text: str) -> Optional[ParsedScore]:
     if not all(0 <= r <= 100 for r in round_scores):
         return None
 
-    year = mt_today().year
-    try:
-        game_date = date(year, month, day)
-    except ValueError:
+    if sum(r * w for r, w in zip(round_scores, ROUND_WEIGHTS)) != final_score:
+        return None
+
+    game_date = _closest_date(month, day, mt_today())
+    if game_date is None:
         return None
 
     return ParsedScore(

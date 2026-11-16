@@ -9,6 +9,16 @@ import embeds
 from config import mt_today
 
 
+def current_streak(played_dates: set[str], today: date) -> int:
+    # Today's game may not be played yet, so a streak ending yesterday is still alive.
+    day = today if today.isoformat() in played_dates else today - timedelta(days=1)
+    streak = 0
+    while day.isoformat() in played_dates:
+        streak += 1
+        day -= timedelta(days=1)
+    return streak
+
+
 async def _build_player_stats(player_id: int) -> dict:
     all_scores = await db.get_player_all_scores(player_id)
     if not all_scores:
@@ -26,16 +36,8 @@ async def _build_player_stats(player_id: int) -> dict:
 
     rolling_avg = await db.get_player_rolling_avg(player_id, 30) or 0.0
 
-    # Current streak: consecutive days ending today (or yesterday)
-    played_dates = sorted({r["game_date"] for r in all_scores}, reverse=True)
-    streak = 0
-    check = mt_today()
-    for d in played_dates:
-        if d == check.isoformat() or d == (check - timedelta(days=1)).isoformat():
-            streak += 1
-            check = date.fromisoformat(d) - timedelta(days=1)
-        else:
-            break
+    played_dates = {r["game_date"] for r in all_scores}
+    streak = current_streak(played_dates, mt_today())
 
     # Turkey count (from achievements)
     ach_rows = await db.get_player_achievements(player_id)

@@ -32,7 +32,8 @@ When a user pastes a MapTap share into the configured channel:
 2. **`parser.py` — `parse_maptap_share`**
    - Regex matches: header line (`www.maptap.gg Month Day`), five round scores with trailing emoji, final score line.
    - Extracts month name → integer via `MONTHS` dict.
-   - Game date year = `mt_today().year` — the date in the paste is always authoritative; no adjustment for timezone.
+   - Validates that each round score is `0..100` and that the weighted sum (`ROUND_WEIGHTS = [1, 1, 2, 3, 3]`) matches `final_score`.
+   - Resolves the year via `_closest_date(month, day, mt_today())`, choosing whichever of `year - 1`, `year`, or `year + 1` puts the game date closest to `mt_today()` (handling New Year's rollover and Feb 29).
    - Returns `ParsedScore(game_date, round_scores, final_score)` or `None`.
 
 3. **Back in `on_message`:**
@@ -53,10 +54,11 @@ All slash commands follow the same pattern: `defer()` → DB queries → `follow
 
 **`/leaderboard [view]`** (`cogs/leaderboard.py`):
 - Default view: `alltime`. Options: alltime, daily, weekly, monthly, handicap.
-- `daily` → `db.get_scores_for_date(mt_today())` → `embeds.daily_leaderboard_embed`
+- `daily` → `db.get_scores_for_date(mt_today())` → `embeds.daily_leaderboard_embed` (includes "The Day in Numbers" highlights: group avg, hardest round, weighted Shot of the Day vs. rest-of-group average, and weighted Whiff of the Day via `db.compute_daily_highlights`)
 - `weekly` → `db.compute_weekly_scores(iso_year, iso_week)` → `embeds.weekly_leaderboard_embed`
 - `monthly` → `db.compute_monthly_scores(year, month)` → `embeds.monthly_leaderboard_embed`
-- `alltime` → `db.get_all_time_leaderboard()` → `embeds.all_time_leaderboard_embed` (ranked by `MAX(final_score)`)
+- `alltime` → `db.get_all_time_leaderboard()` → `embeds.all_time_leaderboard_embed` (ranked by `MAX(final_score)`, capped at top 15 + overflow count)
+- Long leaderboard fields automatically spill across multiple 1024-char continuation fields via `_add_list_field`.
 - `handicap` → iterates all players with ≥5 games, fetches 30-day rolling avg per player, computes `adjusted = today_score + (group_avg − personal_avg)`, excludes players who haven't posted today.
 
 **`/mystats` / `/stats @user`** (`cogs/stats.py`):
@@ -76,13 +78,13 @@ All slash commands follow the same pattern: `defer()` → DB queries → `follow
 
 ## Scheduled Summary Flow
 
-`cogs/scheduler.py` runs a `tasks.loop(minutes=1)`. Every minute it checks if `datetime.now(TIMEZONE).hour == 7` and `minute == 0`. If so, it calls `_post_pending_summaries()`.
+`cogs/scheduler.py` runs a `tasks.loop(minutes=1)` with an error handler that logs exceptions and restarts the loop. Every minute at or after `07:00` MT (`(now.hour, now.minute) >= (SUMMARY_HOUR, SUMMARY_MINUTE)`), it calls `_post_pending_summaries()`.
 
 **`_post_pending_summaries()`** also runs on startup (catch-up):
-- Checks `summaries_posted` table before posting each summary type. Posts are idempotent.
-- **Daily** — always posts yesterday's summary. Posts the daily leaderboard embed plus any fumble/twinsies achievements.
-- **Weekly** — on Monday only, posts the previous week's summary. Posts weekly leaderboard plus "I Think Yer Fuckin' Lost Bud" achievement.
-- **Monthly** — on the 1st only, posts the previous month's summary. Posts monthly leaderboard plus most_improved, get_a_life, mia achievements.
+- Checks `summaries_posted` table before posting each summary type, and wraps each post in `_run_safely` so one failed summary never blocks the others or marks itself posted.
+- **Daily** — posts yesterday's summary (`daily_leaderboard_embed` + `twinsies` daily achievements).
+- **Weekly** — targets the most recently completed ISO week (`today - timedelta(days=today.weekday() + 7)`). Posts weekly leaderboard, `lost_bud` achievement, and crowns `Bungus Jones` for the week's worst single score (even if Monday was missed).
+- **Monthly** — targets the most recently completed calendar month (`today.replace(day=1) - timedelta(days=1)`). Posts monthly leaderboard plus `most_improved`, `get_a_life`, and `mia` achievements (even if the 1st was missed).
 
 ---
 
