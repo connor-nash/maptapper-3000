@@ -1,6 +1,6 @@
 import json
 
-from database import compute_daily_highlights
+from database import compute_daily_highlights, compute_period_highlights
 
 
 def row(name: str, rounds: list[int]) -> dict:
@@ -48,3 +48,28 @@ def test_group_numbers_and_hardest_round():
     assert h["player_count"] == 2
     assert (h["hardest_round"], h["hardest_round_avg"]) == (5, 50)
     assert h["group_avg"] == (a["final_score"] + b["final_score"]) / 2
+
+
+def test_period_highlights_finds_hardest_day_high_game_shot_and_whiff():
+    scores = [
+        {**row("chicken__man.", [100, 98, 95, 97, 81]), "game_date": "2026-11-12"},
+        {**row("pitystomper69", [96, 91, 88, 100, 93]), "game_date": "2026-11-12"},
+        {**row("Zach Coury", [94, 79, 92, 96, 90]), "game_date": "2026-11-13"},
+        {**row("Connor", [90, 62, 97, 54, 91]), "game_date": "2026-11-13"},
+        {**row("Dave", [93, 95, 31, 74, 12]), "game_date": "2026-11-14"},
+        {**row("Connor", [80, 80, 80, 80, 80]), "game_date": "2026-11-14"},
+        {**row("Ace", [80, 80, 80, 80, 80]), "game_date": "2026-11-14"},
+    ]
+    h = compute_period_highlights(scores)
+    assert h["total_games"] == 7
+    assert h["hardest_day"]["game_date"] == "2026-11-14"
+    assert (h["high_game"]["username"], h["high_game"]["score"], h["high_game"]["game_date"]) == (
+        "pitystomper69", 942, "2026-11-12"
+    )
+    assert (h["shot"]["username"], h["shot"]["round"], h["shot"]["game_date"]) == (
+        "Zach Coury", 4, "2026-11-13"
+    )
+    assert (h["whiff"]["username"], h["whiff"]["round"], h["whiff"]["cost"], h["whiff"]["game_date"]) == (
+        "Dave", 5, 264, "2026-11-14"
+    )
+

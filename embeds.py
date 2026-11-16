@@ -8,7 +8,7 @@ from datetime import date
 import discord
 from discord.utils import escape_markdown
 from config import EMBED_COLOR, MAPTAP_URL
-from database import compute_daily_highlights
+from database import _iso_week_date_range, compute_daily_highlights, compute_period_highlights
 
 
 MEDAL = {1: "🥇", 2: "🥈", 3: "🥉"}
@@ -84,9 +84,17 @@ def daily_leaderboard_embed(game_date: str, scores: list) -> discord.Embed:
     return embed
 
 
-def weekly_leaderboard_embed(iso_year: int, iso_week: int, weekly_data: list, bungus: dict | None = None) -> discord.Embed:
+def weekly_leaderboard_embed(
+    iso_year: int,
+    iso_week: int,
+    weekly_data: list,
+    bungus: dict | None = None,
+    week_scores: list | None = None,
+) -> discord.Embed:
+    start_str, end_str = _iso_week_date_range(iso_year, iso_week)
+    start_d, end_d = date.fromisoformat(start_str), date.fromisoformat(end_str)
     embed = discord.Embed(
-        title=f"📅 Weekly Recap — Week {iso_week}, {iso_year}",
+        title=f"📅 Weekly Recap — {start_d.strftime('%b %-d')} – {end_d.strftime('%b %-d')} (Week {iso_week})",
         color=EMBED_COLOR,
         url=MAPTAP_URL,
     )
@@ -102,26 +110,43 @@ def weekly_leaderboard_embed(iso_year: int, iso_week: int, weekly_data: list, bu
 
     by_avg = sorted(active, key=lambda x: x["weekly_avg"], reverse=True)
     avg_lines = [
-        f"{_medal(i)} **{d['username']}** — {d['weekly_avg']:.1f} *({d['games_played']}/7 days)*"
+        f"{MEDAL.get(i, f'{i}.')} {escape_markdown(d['username'])} — **{d['weekly_avg']:.1f}**"
+        f"  ·  {d['best_score']} best  ·  {d['games_played']}/7 days"
         for i, d in enumerate(by_avg, 1)
     ]
-    _add_list_field(embed, "🏅 Average Score (Drop-2)", avg_lines)
+    _add_list_field(embed, "🏅 Standings (Drop-2 Average)", avg_lines)
 
-    embed.add_field(name="​", value="​", inline=False)
-
-    by_best = sorted(active, key=lambda x: x["best_score"], reverse=True)
-    best_lines = [
-        f"{_medal(i)} **{d['username']}** — {d['best_score']}"
-        for i, d in enumerate(by_best, 1)
-    ]
-    _add_list_field(embed, "⚡ Best Single Score", best_lines)
+    h = compute_period_highlights(week_scores or [])
+    if h:
+        hd = date.fromisoformat(h["hardest_day"]["game_date"])
+        hg = h["high_game"]
+        hg_d = date.fromisoformat(hg["game_date"])
+        numbers = [
+            f"Group avg **{h['group_avg']:.0f}** · {h['total_games']} games played · "
+            f"Hardest day: {hd.strftime('%a, %b %-d')} (avg {h['hardest_day']['avg']:.0f})",
+            f"⚡ High game of the week: **{escape_markdown(hg['username'])}** — **{hg['score']}** ({hg_d.strftime('%a, %b %-d')})",
+        ]
+        if h["shot"]:
+            s = h["shot"]
+            sd = date.fromisoformat(s["game_date"])
+            numbers.append(
+                f"🎯 Shot of the week: **{escape_markdown(s['username'])}** — {s['score']} on R{s['round']}, "
+                f"group avg {s['group_avg']:.0f} (+{s['value']:.0f}, {sd.strftime('%a')})"
+            )
+        if h["whiff"]:
+            w = h["whiff"]
+            wd = date.fromisoformat(w["game_date"])
+            numbers.append(
+                f"🫠 Whiff of the week: **{escape_markdown(w['username'])}** — {w['score']} on R{w['round']} "
+                f"(−{w['cost']} pts, {wd.strftime('%a')})"
+            )
+        embed.add_field(name="📊 The Week in Numbers", value="\n".join(numbers), inline=False)
 
     if bungus:
-        embed.add_field(name="​", value="​", inline=False)
         game_date = date.fromisoformat(bungus["game_date"])
         embed.add_field(
             name="💩 Bungus Jones",
-            value=f"**{bungus['username']}** — {bungus['worst_score']} ({game_date.strftime('%b %-d')})",
+            value=f"**{escape_markdown(bungus['username'])}** — **{bungus['worst_score']}** ({game_date.strftime('%a, %b %-d')})",
             inline=False,
         )
 

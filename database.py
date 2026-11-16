@@ -396,6 +396,45 @@ def compute_daily_highlights(scores: list) -> dict:
     }
 
 
+def compute_period_highlights(all_scores: list) -> dict | None:
+    if not all_scores:
+        return None
+    by_date: dict[str, list] = {}
+    for row in all_scores:
+        by_date.setdefault(row["game_date"], []).append(row)
+
+    hardest_date = min(
+        by_date,
+        key=lambda d: sum(r["final_score"] for r in by_date[d]) / len(by_date[d]),
+    )
+    hardest_rows = by_date[hardest_date]
+    hardest_avg = sum(r["final_score"] for r in hardest_rows) / len(hardest_rows)
+
+    best_row = max(all_scores, key=lambda r: r["final_score"])
+
+    best_shot = None
+    worst_whiff = None
+    for d, day_rows in by_date.items():
+        day_h = compute_daily_highlights(day_rows)
+        if day_h["shot"] and (best_shot is None or day_h["shot"]["value"] > best_shot["value"]):
+            best_shot = {**day_h["shot"], "game_date": d}
+        if day_h["whiff"] and (worst_whiff is None or day_h["whiff"]["cost"] > worst_whiff["cost"]):
+            worst_whiff = {**day_h["whiff"], "game_date": d}
+
+    return {
+        "group_avg": sum(r["final_score"] for r in all_scores) / len(all_scores),
+        "total_games": len(all_scores),
+        "hardest_day": {"game_date": hardest_date, "avg": hardest_avg},
+        "high_game": {
+            "username": best_row["username"],
+            "score": best_row["final_score"],
+            "game_date": best_row["game_date"],
+        },
+        "shot": best_shot,
+        "whiff": worst_whiff,
+    }
+
+
 async def get_weekly_bungus(iso_year: int, iso_week: int) -> dict | None:
     """Return the player with the single worst submitted game that week (no missed-day zeros)."""
     all_scores = await get_scores_for_week(iso_year, iso_week)

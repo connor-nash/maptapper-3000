@@ -32,7 +32,9 @@ class Leaderboard(commands.Cog):
         elif view == "weekly":
             iso_year, iso_week, _ = now.isocalendar()
             weekly_data = await db.compute_weekly_scores(iso_year, iso_week)
-            embed = embeds.weekly_leaderboard_embed(iso_year, iso_week, weekly_data)
+            bungus = await db.get_weekly_bungus(iso_year, iso_week)
+            week_scores = await db.get_scores_for_week(iso_year, iso_week)
+            embed = embeds.weekly_leaderboard_embed(iso_year, iso_week, weekly_data, bungus, week_scores)
 
         elif view == "monthly":
             monthly_data = await db.compute_monthly_scores(now.year, now.month)

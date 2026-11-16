@@ -145,8 +145,9 @@ class Scheduler(commands.Cog):
     async def _post_weekly_summary(self, channel: discord.TextChannel, iso_year: int, iso_week: int):
         weekly_data = await db.compute_weekly_scores(iso_year, iso_week)
         bungus = await db.get_weekly_bungus(iso_year, iso_week)
+        week_scores = await db.get_scores_for_week(iso_year, iso_week)
 
-        embed = embeds.weekly_leaderboard_embed(iso_year, iso_week, weekly_data, bungus)
+        embed = embeds.weekly_leaderboard_embed(iso_year, iso_week, weekly_data, bungus, week_scores)
 
         weekly_achievements = await ach.check_weekly_achievements(iso_year, iso_week)
         for name, value in embeds.weekly_achievements_fields(weekly_achievements):
