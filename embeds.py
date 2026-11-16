@@ -84,6 +84,31 @@ def daily_leaderboard_embed(game_date: str, scores: list) -> discord.Embed:
     return embed
 
 
+def _period_numbers_lines(h: dict, unit: str) -> list[str]:
+    hd = date.fromisoformat(h["hardest_day"]["game_date"])
+    hg = h["high_game"]
+    hg_d = date.fromisoformat(hg["game_date"])
+    lines = [
+        f"Group avg **{h['group_avg']:.0f}** · Hardest day: {hd.strftime('%a, %b %-d')} (avg {h['hardest_day']['avg']:.0f})",
+        f"⚡ High game of the {unit}: **{escape_markdown(hg['username'])}** — **{hg['score']}** ({hg_d.strftime('%a, %b %-d')})",
+    ]
+    if h["shot"]:
+        s = h["shot"]
+        sd = date.fromisoformat(s["game_date"])
+        lines.append(
+            f"🎯 Shot of the {unit}: **{escape_markdown(s['username'])}** — {s['score']} on R{s['round']}, "
+            f"group avg {s['group_avg']:.0f} (+{s['value']:.0f}, {sd.strftime('%b %-d')})"
+        )
+    if h["whiff"]:
+        w = h["whiff"]
+        wd = date.fromisoformat(w["game_date"])
+        lines.append(
+            f"🫠 Whiff of the {unit}: **{escape_markdown(w['username'])}** — {w['score']} on R{w['round']} "
+            f"(−{w['cost']} pts, {wd.strftime('%b %-d')})"
+        )
+    return lines
+
+
 def weekly_leaderboard_embed(
     iso_year: int,
     iso_week: int,
@@ -118,29 +143,7 @@ def weekly_leaderboard_embed(
 
     h = compute_period_highlights(week_scores or [])
     if h:
-        hd = date.fromisoformat(h["hardest_day"]["game_date"])
-        hg = h["high_game"]
-        hg_d = date.fromisoformat(hg["game_date"])
-        numbers = [
-            f"Group avg **{h['group_avg']:.0f}** · {h['total_games']} games played · "
-            f"Hardest day: {hd.strftime('%a, %b %-d')} (avg {h['hardest_day']['avg']:.0f})",
-            f"⚡ High game of the week: **{escape_markdown(hg['username'])}** — **{hg['score']}** ({hg_d.strftime('%a, %b %-d')})",
-        ]
-        if h["shot"]:
-            s = h["shot"]
-            sd = date.fromisoformat(s["game_date"])
-            numbers.append(
-                f"🎯 Shot of the week: **{escape_markdown(s['username'])}** — {s['score']} on R{s['round']}, "
-                f"group avg {s['group_avg']:.0f} (+{s['value']:.0f}, {sd.strftime('%a')})"
-            )
-        if h["whiff"]:
-            w = h["whiff"]
-            wd = date.fromisoformat(w["game_date"])
-            numbers.append(
-                f"🫠 Whiff of the week: **{escape_markdown(w['username'])}** — {w['score']} on R{w['round']} "
-                f"(−{w['cost']} pts, {wd.strftime('%a')})"
-            )
-        embed.add_field(name="📊 The Week in Numbers", value="\n".join(numbers), inline=False)
+        embed.add_field(name="📊 The Week in Numbers", value="\n".join(_period_numbers_lines(h, "week")), inline=False)
 
     if bungus:
         game_date = date.fromisoformat(bungus["game_date"])
@@ -153,7 +156,12 @@ def weekly_leaderboard_embed(
     return embed
 
 
-def monthly_leaderboard_embed(year: int, month: int, monthly_data: list) -> discord.Embed:
+def monthly_leaderboard_embed(
+    year: int,
+    month: int,
+    monthly_data: list,
+    month_scores: list | None = None,
+) -> discord.Embed:
     from calendar import month_name, monthrange
     days_in_month = monthrange(year, month)[1]
     embed = discord.Embed(
@@ -170,23 +178,17 @@ def monthly_leaderboard_embed(year: int, month: int, monthly_data: list) -> disc
         embed.add_field(name="No scores this month", value="​", inline=False)
         return embed
 
-    # Average (of kept scores) — primary ranking
     by_avg = sorted(monthly_data, key=lambda x: x["monthly_avg"], reverse=True)
     avg_lines = [
-        f"{_medal(i)} **{d['username']}** — {d['monthly_avg']:.1f} *({d['games_played']}/{days_in_month} days)*"
+        f"{MEDAL.get(i, f'{i}.')} {escape_markdown(d['username'])} — **{d['monthly_avg']:.1f}**"
+        f"  ·  {d['best_score']} best  ·  {d['games_played']}/{days_in_month} days"
         for i, d in enumerate(by_avg, 1)
     ]
-    _add_list_field(embed, "🏅 Average Score (Drop-8)", avg_lines)
+    _add_list_field(embed, "🏅 Standings (Drop-8 Average)", avg_lines)
 
-    embed.add_field(name="​", value="​", inline=False)
-
-    # Best single score
-    by_best = sorted(monthly_data, key=lambda x: x["best_score"], reverse=True)
-    best_lines = [
-        f"{_medal(i)} **{d['username']}** — {d['best_score']}"
-        for i, d in enumerate(by_best, 1)
-    ]
-    _add_list_field(embed, "⚡ Best Single Score", best_lines)
+    h = compute_period_highlights(month_scores or [])
+    if h:
+        embed.add_field(name="📊 The Month in Numbers", value="\n".join(_period_numbers_lines(h, "month")), inline=False)
 
     return embed
 

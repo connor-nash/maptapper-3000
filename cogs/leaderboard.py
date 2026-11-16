@@ -38,7 +38,8 @@ class Leaderboard(commands.Cog):
 
         elif view == "monthly":
             monthly_data = await db.compute_monthly_scores(now.year, now.month)
-            embed = embeds.monthly_leaderboard_embed(now.year, now.month, monthly_data)
+            month_scores = await db.get_scores_for_month(now.year, now.month)
+            embed = embeds.monthly_leaderboard_embed(now.year, now.month, monthly_data, month_scores)
 
         elif view == "alltime":
             rows = await db.get_all_time_leaderboard()

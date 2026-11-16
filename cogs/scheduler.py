@@ -184,7 +184,8 @@ class Scheduler(commands.Cog):
 
     async def _post_monthly_summary(self, channel: discord.TextChannel, year: int, month: int):
         monthly_data = await db.compute_monthly_scores(year, month)
-        embed = embeds.monthly_leaderboard_embed(year, month, monthly_data)
+        month_scores = await db.get_scores_for_month(year, month)
+        embed = embeds.monthly_leaderboard_embed(year, month, monthly_data, month_scores)
 
         monthly_achievements = await ach.check_monthly_achievements(year, month)
         for name, value in embeds.monthly_achievements_fields(monthly_achievements):

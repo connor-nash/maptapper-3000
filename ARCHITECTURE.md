@@ -56,7 +56,7 @@ All slash commands follow the same pattern: `defer()` → DB queries → `follow
 - Default view: `alltime`. Options: alltime, daily, weekly, monthly, handicap.
 - `daily` → `db.get_scores_for_date(mt_today())` → `embeds.daily_leaderboard_embed` (includes "The Day in Numbers" highlights: group avg, hardest round, weighted Shot of the Day vs. rest-of-group average, and weighted Whiff of the Day via `db.compute_daily_highlights`)
 - `weekly` → `db.compute_weekly_scores(iso_year, iso_week)` + `db.get_weekly_bungus(iso_year, iso_week)` + `db.get_scores_for_week(iso_year, iso_week)` → `embeds.weekly_leaderboard_embed` (includes "The Week in Numbers" highlights: group avg, total games, hardest day of the week, high game of the week, Shot of the Week, and Whiff of the Week via `db.compute_period_highlights`)
-- `monthly` → `db.compute_monthly_scores(year, month)` → `embeds.monthly_leaderboard_embed`
+- `monthly` → `db.compute_monthly_scores(year, month)` + `db.get_scores_for_month(year, month)` → `embeds.monthly_leaderboard_embed` (includes "The Month in Numbers" highlights via `db.compute_period_highlights`)
 - `alltime` → `db.get_all_time_leaderboard()` → `embeds.all_time_leaderboard_embed` (ranked by `MAX(final_score)`, capped at top 15 + overflow count)
 - Long leaderboard fields automatically spill across multiple 1024-char continuation fields via `_add_list_field`.
 - `handicap` → iterates all players with ≥5 games, fetches 30-day rolling avg per player, computes `adjusted = today_score + (group_avg − personal_avg)`, excludes players who haven't posted today.
